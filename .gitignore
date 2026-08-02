@@ -1,0 +1,12 @@
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+build/
+dist/
+
+# local data caches (bundled data under data/bundled IS committed)
+data/cache/

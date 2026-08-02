@@ -1,0 +1,43 @@
+longshot demo (offline) — longshot 0.1.0
+bundled data: /mnt/agents/output/portfolio/longshot/data/bundled/manifold_resolved_sample.jsonl
+
+longshot analysis: Manifold bundled resolved-market sample
+markets: 278 (YES 120, NO 158)
+
+horizon      n   Brier     ECE   skill   slope      slope 95% CI
+--------------------------------------------------------------
+30d        163  0.1323  0.0269   0.442   1.059      [0.97, 1.11]*
+14d        176  0.1450  0.0140   0.412   0.970      [0.85, 1.08]*
+7d         161  0.1321  0.0359   0.468   1.077      [1.06, 1.09]*
+3d         174  0.0874  0.0208   0.647   1.044      [0.99, 1.08]*
+1d         129  0.0862  0.0291   0.655   1.062      [1.05, 1.08]*
+12h        111  0.0849  0.0317   0.658   1.068      [1.04, 1.09]*
+1h          56  0.1114       -   0.503       - [all bins sparse]*
+
+(* fewer than 3 non-sparse bins: ECE/slope rest on thin support)
+slope > 1: prices compressed toward 0.5 (underconfident); slope < 1: overconfident
+
+out-of-sample correction (test split by resolution date):
+horizon method       dBrier              95% CI  verdict
+------------------------------------------------------------------------
+30d     platt       +0.0063  [-0.0080, +0.0202]  no reliable improvement
+30d     isotonic    +0.0149  [-0.0058, +0.0337]  no reliable improvement
+14d     platt       +0.0076  [-0.0096, +0.0277]  no reliable improvement
+14d     isotonic    +0.0137  [-0.0161, +0.0436]  no reliable improvement
+7d      platt       +0.0045  [-0.0099, +0.0189]  no reliable improvement
+7d      isotonic    +0.0119  [-0.0174, +0.0410]  no reliable improvement
+3d      platt       -0.0113  [-0.0253, +0.0024]  no reliable improvement
+3d      isotonic    +0.0053  [-0.0191, +0.0341]  no reliable improvement
+1d      platt       -0.0056  [-0.0179, +0.0075]  no reliable improvement
+1d      isotonic    +0.0211  [+0.0046, +0.0404]  reliable degradation
+12h     platt       -0.0042  [-0.0222, +0.0146]  no reliable improvement
+12h     isotonic    +0.0241  [-0.0097, +0.0599]  no reliable improvement
+1h        (skipped: too few train/test panel points (<20))
+
+biased fixture (planted compression 0.55): slope at 30d = 1.78 [1.40, 2.19] (expect ~1.8 = 1/0.55)
+
+wrote examples/demo/analysis_bundled.json
+wrote examples/demo/correction_bundled.json
+wrote examples/demo/report_bundled.html
+wrote examples/demo/report_bundled.json
+wrote examples/demo/analysis_biased_fixture.json
