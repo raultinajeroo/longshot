@@ -1,6 +1,6 @@
 # longshot
 
-**Find where prediction markets are wrong — systematically.**
+**Find where prediction markets are wrong, systematically.**
 
 Calibration & bias analytics for prediction markets, built as a
 continuation of recent research. longshot downloads resolved markets with
@@ -65,7 +65,7 @@ biased fixture (planted compression 0.55): slope at 30d = 1.78 [1.40, 2.19] (exp
 Two honest headline findings. First, this Manifold sample is close to
 calibrated: compression slopes sit within ~8% of 1.0 at every horizon, and
 Brier skill vs climatology runs 0.41-0.66. Second, the correction layer
-cannot beat the raw market price out-of-sample here — every horizon is
+cannot beat the raw market price out-of-sample here: every horizon is
 "no reliable improvement" (one "reliable degradation"). longshot reports
 that verdict; it does not tune until the answer looks better. The
 sanity-check anchor runs the other way: on the fixture with planted
@@ -75,7 +75,7 @@ against the expected 1/0.55 = 1.82.
 ## The research context
 
 Recent work keeps rediscovering that the market price is a strong
-forecaster — and mostly stops there. longshot is the measurement layer
+forecaster, and mostly stops there. longshot is the measurement layer
 those results point at.
 
 - **Prophet Arena** (Yang et al. 2025, arXiv:2510.17638): 23 LLMs on
@@ -88,20 +88,20 @@ those results point at.
   fetch-blocked at build time.)
 - **Le 2026, "Decomposing Crowd Wisdom"**: political markets are
   chronically compressed toward 50%, and the effect does not replicate
-  across platforms — so longshot ships per-venue replication by design
+  across platforms, so longshot ships per-venue replication by design
   (compression slope with bootstrap CIs per venue, per horizon).
 - **Bartlett & O'Hara**: Kalshi YES-buyers' implied win rate is 60.9%
-  vs 32.5% realized — price-side calibration is an open measurement
+  vs 32.5% realized. Price-side calibration is an open measurement
   problem.
 - **Halawi et al. 2024** (arXiv:2402.18563): human crowd Brier 0.149 vs
   best zero-shot LLM 0.208.
 - **Saguillo et al.** (AFT 2025, arXiv:2508.03474): $40M of documented
-  arbitrage — efficiency gaps are real and measurable.
+  arbitrage. Efficiency gaps are real and measurable.
 - **ForecastBench** (Karger et al., ICLR 2025): dynamic benchmark with
   public data.
 
 longshot does not forecast. It measures the forecaster that already
-exists — the market price — and asks where, when, and for whom it is
+exists (the market price) and asks where, when, and for whom it is
 biased, with sample sizes and confidence intervals attached.
 
 ## Features
@@ -119,7 +119,7 @@ biased, with sample sizes and confidence intervals attached.
   per-category YES-price inflation with CIs.
 - **Correction layer**: Platt scaling and isotonic regression (PAVA) fit
   on the earliest 60% of markets by resolution date, evaluated on the
-  later test split — delta-Brier, delta-log-loss, ECE before/after,
+  later test split: delta-Brier, delta-log-loss, ECE before/after,
   bootstrap CI of delta-Brier, and an explicit verdict. If the CI includes
   0 the verdict is `no reliable improvement`, and the demo prints it.
 - **Venues**: Manifold (fully working, no key), Polymarket and Kalshi
@@ -171,7 +171,7 @@ One JSON object per line (JSONL):
 | Manifold | bundled sample + live collector | none | fully exercised from the build machine; bundled sample of 278 markets committed |
 | Polymarket | live collector (Gamma + CLOB) | none | network-gated; parsers unit-tested against canonical payloads; outcome inferred from terminal prices; 12h history fidelity |
 | Kalshi | live collector (v2 settled + candlesticks) | none today | network-gated; parsers unit-tested; daily candles; sends `Authorization: Bearer $KALSHI_API_KEY` only if set |
-| fixture | offline | — | loads any JSONL in store format (bundled data, simulator output, prior fetches) |
+| fixture | offline | none | loads any JSONL in store format (bundled data, simulator output, prior fetches) |
 
 Polymarket and Kalshi collectors were written defensively but **could not
 be exercised against the live APIs from the build sandbox** (only
@@ -253,4 +253,4 @@ it with `@register`, and add parser tests with a recorded payload.
 
 ## License
 
-MIT — see [LICENSE](LICENSE). Copyright (c) 2026 Raul Tinajero Olivas.
+MIT. See [LICENSE](LICENSE). Copyright (c) 2026 Raul Tinajero Olivas.
