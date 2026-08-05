@@ -1,0 +1,43 @@
+# Pre-registered analysis configuration for longshot.
+#
+# These are the analysis questions and parameters declared BEFORE looking
+# at any new dataset. `longshot analyze --config analysis.yaml` and
+# `longshot correct --config analysis.yaml` take their defaults from this
+# file; an explicit CLI flag still wins (and that deviation should be
+# reported alongside the result).
+#
+# Changing this file after seeing results is p-hacking by another name.
+# If a parameter must move, say so in the report.
+
+# Horizons before resolution at which calibration is measured.
+horizons: [30d, 14d, 7d, 3d, 1d, 12h, 1h]
+
+# Equal-width probability bins for calibration tables.
+bins: 10
+
+# A bin with fewer markets than this is sparse: excluded from ECE and
+# slope estimates, and flagged as thin support (never silently dropped).
+min_per_bin: 30
+
+# Market-level bootstrap resamples for confidence intervals.
+bootstrap: 1000
+
+# RNG seed for the bootstrap and any sampling.
+seed: 42
+
+correction:
+  # Bias-correction maps fit on the train split and evaluated out-of-sample.
+  methods: [platt, isotonic]
+  # Earliest fraction of markets by resolution date used for fitting.
+  train_frac: 0.6
+  # Verdict rules, evaluated by the code, never by eyeball:
+  #   - if the bootstrap 95% CI of out-of-sample delta-Brier includes 0,
+  #     the verdict is "no reliable improvement"
+  #   - a CI strictly below 0 is "reliable improvement"
+  #   - a CI strictly above 0 is "reliable degradation"
+  # Verdicts are reported as computed; the pipeline is never re-tuned
+  # until improvement appears.
+  verdict_rules:
+    ci_includes_zero: no reliable improvement
+    ci_below_zero: reliable improvement
+    ci_above_zero: reliable degradation
