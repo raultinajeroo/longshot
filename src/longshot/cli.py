@@ -68,6 +68,10 @@ def build_parser() -> argparse.ArgumentParser:
                "manifold_resolved_sample.jsonl --out analysis.json")
     p.add_argument("--input", nargs="+", required=True)
     p.add_argument("--out")
+    p.add_argument("--config",
+                   help="pre-registered analysis.yaml; supplies defaults "
+                   "for horizons/bins/min_per_bin/bootstrap/seed "
+                   "(explicit flags override)")
     p.add_argument("--horizons", default=",".join(DEFAULT_HORIZONS))
     p.add_argument("--bins", type=int, default=10)
     p.add_argument("--min-per-bin", type=int, default=30)
@@ -84,6 +88,9 @@ def build_parser() -> argparse.ArgumentParser:
                    default="both")
     p.add_argument("--train-frac", type=float, default=0.6)
     p.add_argument("--out")
+    p.add_argument("--config",
+                   help="pre-registered analysis.yaml; supplies defaults "
+                   "(explicit flags override)")
     p.add_argument("--horizons", default=",".join(DEFAULT_HORIZONS))
     p.add_argument("--bins", type=int, default=10)
     p.add_argument("--min-per-bin", type=int, default=30)
@@ -98,6 +105,21 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--correction")
     p.add_argument("--out", required=True)
     p.add_argument("--title", default="longshot calibration report")
+
+    p = sub.add_parser(
+        "publish",
+        help="write a publishable note: report.html, report.json, "
+        "README-summary.md, provenance.json",
+        epilog="example: longshot publish --analysis analysis.json "
+               "--correction correction.json --out site/")
+    p.add_argument("--analysis", required=True)
+    p.add_argument("--correction")
+    p.add_argument("--out", required=True, help="output directory")
+    p.add_argument("--title", default="longshot calibration report")
+
+    p = sub.add_parser(
+        "venues",
+        help="print the honest per-venue collector status table")
 
     p = sub.add_parser(
         "simulate", help="generate synthetic markets",
@@ -158,8 +180,13 @@ def _cmd_fetch(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
-def _horizon_args(args: argparse.Namespace) -> tuple[list[str], dict[str, int]]:
-    names = [h.strip() for h in args.horizons.split(",") if h.strip()]
+def _horizon_args(args: argparse.Namespace,
+                  config: dict | None = None) -> tuple[list[str], dict[str, int]]:
+    raw = args.horizons
+    if config and raw == ",".join(DEFAULT_HORIZONS) and config.get("horizons"):
+        names = [str(h) for h in config["horizons"]]
+    else:
+        names = [h.strip() for h in raw.split(",") if h.strip()]
     if not names:
         print("longshot: --horizons must name at least one horizon",
               file=sys.stderr)
@@ -172,12 +199,28 @@ def _horizon_args(args: argparse.Namespace) -> tuple[list[str], dict[str, int]]:
     return names, seconds
 
 
+def _load_config_or_exit(path) -> dict:
+    from .prereg import AnalysisConfigError, load_analysis_config
+
+    try:
+        return load_analysis_config(path)
+    except AnalysisConfigError as exc:
+        print(f"longshot: {exc}", file=sys.stderr)
+        raise SystemExit(EXIT_BAD_INPUT)
+
+
 def _cmd_analyze(args: argparse.Namespace) -> int:
+    from .prereg import pick
+
+    config = _load_config_or_exit(getattr(args, "config", None))
     markets = _load_inputs(args.input)
-    horizons, _ = _horizon_args(args)
+    horizons, _ = _horizon_args(args, config)
     analysis = run_analysis(
-        markets, horizons=horizons, n_bins=args.bins,
-        min_per_bin=args.min_per_bin, n_boot=args.bootstrap, seed=args.seed,
+        markets, horizons=horizons,
+        n_bins=pick(args.bins, 10, config, "bins"),
+        min_per_bin=pick(args.min_per_bin, 30, config, "min_per_bin"),
+        n_boot=pick(args.bootstrap, 1000, config, "bootstrap"),
+        seed=pick(args.seed, 42, config, "seed"),
         label=", ".join(str(p) for p in args.input),
     )
     print(format_digest(analysis))
@@ -191,14 +234,26 @@ def _cmd_analyze(args: argparse.Namespace) -> int:
 
 def _cmd_correct(args: argparse.Namespace) -> int:
     from .correct import run_correction
+    from .prereg import pick
 
+    config = _load_config_or_exit(getattr(args, "config", None))
+    corr_cfg = config.get("correction", {}) if config else {}
     markets = _load_inputs([args.input])
-    horizons, seconds = _horizon_args(args)
+    horizons, seconds = _horizon_args(args, config)
+    methods = corr_cfg.get("methods", ["isotonic", "platt"])
+    method = (
+        args.method
+        if args.method != "both" or not corr_cfg.get("methods")
+        else ("both" if len(methods) > 1 else methods[0])
+    )
     correction = run_correction(
         markets, horizons=horizons, horizon_seconds=seconds,
-        method=args.method, train_frac=args.train_frac,
-        n_bins=args.bins, min_per_bin=args.min_per_bin,
-        n_boot=args.bootstrap, seed=args.seed,
+        method=method,
+        train_frac=pick(args.train_frac, 0.6, corr_cfg, "train_frac"),
+        n_bins=pick(args.bins, 10, config, "bins"),
+        min_per_bin=pick(args.min_per_bin, 30, config, "min_per_bin"),
+        n_boot=pick(args.bootstrap, 1000, config, "bootstrap"),
+        seed=pick(args.seed, 42, config, "seed"),
     )
     # Print the verdict table via the digest formatter.
     print(format_digest(_minimal_analysis_for_digest(markets, args), correction))
@@ -244,6 +299,33 @@ def _cmd_report(args: argparse.Namespace) -> int:
     out = write_report(analysis, correction, args.out, title=args.title)
     print(f"wrote {out}")
     print(f"wrote {out.with_suffix('.json')}")
+    return EXIT_OK
+
+
+def _cmd_publish(args: argparse.Namespace) -> int:
+    from .publish import publish
+
+    for path in (args.analysis, args.correction):
+        if path and not Path(path).is_file():
+            print(f"longshot: input not found: {path}", file=sys.stderr)
+            return EXIT_BAD_INPUT
+    try:
+        written = publish(args.analysis, args.correction, args.out,
+                          title=args.title)
+    except (OSError, json.JSONDecodeError, KeyError) as exc:
+        print(f"longshot: cannot publish: {exc}", file=sys.stderr)
+        return EXIT_BAD_INPUT
+    for path in written:
+        print(f"wrote {path}")
+    return EXIT_OK
+
+
+def _cmd_venues(args: argparse.Namespace) -> int:
+    from .venues.status import venue_status
+
+    print("longshot venue status (honest claims only):")
+    for row in venue_status():
+        print(f"  {row['venue']:<11} {row['status']}")
     return EXIT_OK
 
 
@@ -323,6 +405,8 @@ def main(argv: list[str] | None = None) -> int:
         "analyze": _cmd_analyze,
         "correct": _cmd_correct,
         "report": _cmd_report,
+        "publish": _cmd_publish,
+        "venues": _cmd_venues,
         "simulate": _cmd_simulate,
         "demo": _cmd_demo,
     }[args.command]
