@@ -70,7 +70,9 @@ cannot beat the raw market price out-of-sample here: every horizon is
 that verdict; it does not tune until the answer looks better. The
 sanity-check anchor runs the other way: on the fixture with planted
 compression (c = 0.55), the pipeline recovers slope 1.78 [1.40, 2.19]
-against the expected 1/0.55 = 1.82.
+against the expected 1/0.55 = 1.82. The one-page version of these two
+findings, and what would be needed to generalize them, is in
+[examples/demo/headline.md](examples/demo/headline.md).
 
 ## The research context
 
@@ -132,21 +134,57 @@ biased, with sample sizes and confidence intervals attached.
 ## Install and CLI
 
 ```bash
-pip install -e .        # stdlib + numpy only, Python >= 3.11
+pip install -e .        # numpy + pyyaml, Python >= 3.11
 ```
 
 ```
 longshot fetch --venue manifold --out data/manifold.jsonl [--max-markets 250] [--max-bets-per-market 4000] [--max-calls 5000] [--seed 42]
 longshot fetch --venue polymarket|kalshi --out FILE [--max-markets N]
-longshot analyze --input FILE [FILE ...] [--out analysis.json] [--horizons 30d,14d,7d,3d,1d,12h,1h] [--bins 10] [--min-per-bin 30] [--bootstrap 1000] [--seed 42]
-longshot correct --input FILE [--method isotonic|platt|both] [--train-frac 0.6] [--out correction.json]
+longshot analyze --input FILE [FILE ...] [--out analysis.json] [--config analysis.yaml] [--horizons 30d,14d,7d,3d,1d,12h,1h] [--bins 10] [--min-per-bin 30] [--bootstrap 1000] [--seed 42]
+longshot correct --input FILE [--method isotonic|platt|both] [--train-frac 0.6] [--config analysis.yaml] [--out correction.json]
 longshot report --analysis analysis.json [--correction correction.json] --out report.html [--title T]
+longshot publish --analysis analysis.json [--correction correction.json] --out site/ [--title T]
+longshot venues
 longshot simulate --mode calibrated|compressed|longshot-bias --markets 120 --seed 7 --out fixtures/x.jsonl
 longshot demo [--outdir examples/demo]
 ```
 
 Exit codes: `0` ok, `2` usage, `3` venue unavailable (message includes a
 remedy hint pointing at offline inputs), `4` empty/invalid input.
+
+## Pre-registered analysis (`analysis.yaml`)
+
+The committed [analysis.yaml](analysis.yaml) declares the analysis
+questions and parameters before any dataset is examined: horizons, bins,
+`min_per_bin`, bootstrap size, correction methods, and the verdict rules
+(a bootstrap CI of delta-Brier that includes 0 means *no reliable
+improvement*, reported as computed — the pipeline is never re-tuned until
+improvement appears). `longshot analyze --config analysis.yaml` and
+`longshot correct --config analysis.yaml` take their defaults from the
+file; explicit CLI flags override it, and such a deviation should be
+reported with the result. Running `--config analysis.yaml` on the bundled
+sample reproduces the committed demo numbers exactly (covered by tests).
+
+## Publishing a note (`longshot publish`)
+
+`longshot publish --analysis analysis.json --correction correction.json
+--out site/` writes a self-contained note:
+
+- `site/report.html` — the single-file HTML report (charts, methods,
+  caveats);
+- `site/report.json` — the analysis document it was built from;
+- `site/README-summary.md` — key tables, correction verdicts, venue
+  status, and the full caveats block;
+- `site/provenance.json` — input file hashes, version, parameters,
+  per-venue status, and the caveats.
+
+Caveats are unavoidable by design: there is no flag to omit the
+play-money/thin-support/inferred-outcomes/carry-forward/
+multiple-comparison block from any generated artifact. When the input is
+Manifold-only (as the bundled sample is), the summary leads with
+"Manifold-only methodology demonstration" and the venue table marks the
+Polymarket/Kalshi collectors as parser-tested but not exercised live.
+`longshot venues` prints the same status table on demand.
 
 ## Data model
 
