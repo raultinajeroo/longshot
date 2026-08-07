@@ -197,6 +197,13 @@ def render_html(
     esc = html.escape
     order = analysis["params"]["horizons"]
     ref = analysis["reference_horizon"]
+    if analysis["horizons"].get(ref, {}).get("skipped"):
+        # Sparse datasets may leave the reference horizon's panel empty;
+        # fall back to the longest horizon with data.
+        ref = next(
+            (h for h in order if not analysis["horizons"][h].get("skipped")),
+            ref,
+        )
     ds = analysis["dataset"]
 
     cat_rows = "".join(
