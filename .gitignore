@@ -10,3 +10,15 @@ dist/
 
 # local data caches (bundled data under data/bundled IS committed)
 data/cache/
+
+# third-party datasets: 5+ GB, not ours to redistribute
+data/kaggle/
+
+# private working notes
+BACKLOG.md
+ROADMAP.md
+
+# secrets (.env.example stays committable)
+.env
+.env.local
+.env.*.local
