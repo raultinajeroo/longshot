@@ -2,13 +2,26 @@
 
 - Settled markets: ``GET {base}/trade-api/v2/markets?status=settled&
   limit=200&cursor={c}`` -> ``markets[]`` with ``ticker``, ``title``,
-  ``result`` ("yes"/"no"/""), ``volume``, ``close_time``,
-  ``created_time``, ``series_ticker``.
+  ``result`` ("yes"/"no"/""), ``close_time``, ``created_time``.
 - History: ``GET {base}/trade-api/v2/series/{series_ticker}/markets/
   {ticker}/candlesticks?period_interval=1440`` -> ``candlesticks[]`` with
-  ``end_period_ts`` and ``price.close`` in cents (converted to [0, 1]).
+  ``end_period_ts`` and a ``price`` object.
   Daily candles are the coarsest documented granularity; short-horizon
   panels from Kalshi inherit that limit.
+
+Kalshi's fixed-point migration (confirmed live 2026-08-07) removed the
+integer-cent fields rather than deprecating them, so parsing must read the
+new names and treat the old ones as fallback:
+
+- ``volume`` -> ``volume_fp``, a decimal *string* of contracts.
+- ``price.close`` (cents) -> ``price.close_dollars``, a decimal string
+  already denominated in dollars, so it needs no /100 scaling.
+- ``series_ticker`` is no longer returned on market objects at all. It is
+  the prefix of ``event_ticker`` (``KXHIGHNY-26AUG06`` -> ``KXHIGHNY``),
+  which is what the candlesticks path needs.
+
+Reading the old names alone yields zero usable markets, silently: the
+parsers skip what they cannot read rather than raising.
 
 If Kalshi ever gates these endpoints, set KALSHI_API_KEY: when present the
 client adds ``Authorization: Bearer <key>``; it is never required for
@@ -55,15 +68,18 @@ def parse_settled_market(raw: dict) -> dict | None:
     if result not in ("yes", "no"):
         return None  # "" and other terminal states carry no binary outcome
     ticker = raw.get("ticker")
-    series_ticker = raw.get("series_ticker")
+    series_ticker = raw.get("series_ticker") or _series_from_event(
+        raw.get("event_ticker")
+    )
     if not ticker or not series_ticker:
         return None
     created_ts = _parse_iso_ts(raw.get("created_time"))
     resolved_ts = _parse_iso_ts(raw.get("close_time"))
     if created_ts is None or resolved_ts is None or resolved_ts <= created_ts:
         return None
+    raw_volume = raw.get("volume_fp", raw.get("volume"))
     try:
-        volume = float(raw.get("volume")) if raw.get("volume") is not None else None
+        volume = float(raw_volume) if raw_volume is not None else None
     except (TypeError, ValueError):
         volume = None
     return {
@@ -77,15 +93,30 @@ def parse_settled_market(raw: dict) -> dict | None:
     }
 
 
+def _series_from_event(event_ticker: object) -> str:
+    """Derive the series ticker from an event ticker.
+
+    Market objects stopped carrying ``series_ticker``; the candlesticks path
+    still needs it. ``KXHIGHNY-26AUG06`` -> ``KXHIGHNY``.
+    """
+    if not isinstance(event_ticker, str):
+        return ""
+    return event_ticker.split("-", 1)[0]
+
+
 def parse_candlesticks(data: object) -> tuple[PricePoint, ...]:
-    """Parse a candlestick payload into a sorted series (cents -> [0, 1])."""
+    """Parse a candlestick payload into a sorted series of [0, 1] prices."""
     if not isinstance(data, dict) or not isinstance(data.get("candlesticks"), list):
         return ()
     points: list[PricePoint] = []
     for c in data["candlesticks"]:
         try:
             ts = int(c["end_period_ts"])
-            close = float(c["price"]["close"]) / 100.0
+            price = c["price"]
+            if "close_dollars" in price:
+                close = float(price["close_dollars"])  # already dollars
+            else:
+                close = float(price["close"]) / 100.0  # legacy integer cents
         except (KeyError, TypeError, ValueError):
             continue
         if 0.0 <= close <= 1.0:
@@ -146,6 +177,11 @@ class KalshiClient(VenueClient):
                     break
                 parsed = parse_settled_market(raw)
                 if parsed is None:
+                    continue
+                # Markets living under a day (15-min crypto up/downs dominate
+                # the settled stream) can never produce >=2 daily candles;
+                # skip the doomed candlestick call for them.
+                if parsed["resolved_ts"] - parsed["created_ts"] < 90000:
                     continue
                 candles = self._get(
                     f"/trade-api/v2/series/{parsed['series_ticker']}"

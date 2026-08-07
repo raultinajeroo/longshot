@@ -150,6 +150,44 @@ def test_kalshi_parsers_canonical():
     assert parse_candlesticks({"candlesticks": "nope"}) == ()
 
 
+def test_kalshi_fixed_point_payloads():
+    """Kalshi's fixed-point migration removed the integer-cent fields rather
+    than deprecating them. Payloads recorded live 2026-08-07 from
+    KXHIGHNY-26AUG06-T95: no `series_ticker`, no `volume`, no `price.close`.
+    """
+    market = {
+        "ticker": "KXHIGHNY-26AUG06-T95",
+        "event_ticker": "KXHIGHNY-26AUG06",
+        "title": "Will the **high temp in NYC** be >95 on Aug 6, 2026?",
+        "result": "no",
+        "volume_fp": "1315.02",
+        "created_time": "2026-08-05T09:30:52.385847Z",
+        "close_time": "2026-08-07T04:59:00Z",
+    }
+    parsed = parse_settled_market(market)
+    assert parsed is not None, "current payloads must not be silently dropped"
+    # series_ticker is absent and must come from the event ticker prefix,
+    # because the candlesticks path is keyed on it.
+    assert parsed["series_ticker"] == "KXHIGHNY"
+    assert parsed["outcome"] == 0
+    assert parsed["volume"] == 1315.02
+
+    # close_dollars is already dollars: no /100 scaling.
+    candles = parse_candlesticks({"candlesticks": [
+        {"end_period_ts": 1767225600, "price": {"close_dollars": "0.0100"}},
+        {"end_period_ts": 1767139200, "price": {"close_dollars": "0.7300"}},
+    ]})
+    assert [pt.price for pt in candles] == [0.73, 0.01]
+
+
+def test_kalshi_market_without_series_or_event_is_skipped():
+    assert parse_settled_market({
+        "ticker": "T", "result": "yes",
+        "created_time": "2026-01-01T00:00:00Z",
+        "close_time": "2026-02-01T00:00:00Z",
+    }) is None
+
+
 def test_fixture_venue_loads_bundled():
     bundled = Path("data/bundled/manifold_resolved_sample.jsonl")
     if not bundled.exists():
