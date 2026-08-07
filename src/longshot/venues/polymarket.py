@@ -3,8 +3,13 @@
 Two APIs:
 
 - Gamma (``https://gamma-api.polymarket.com``): market metadata.
-  ``GET /markets?closed=true&limit=100&offset={n}`` — fields vary, so
-  parsing is defensive. Outcome inference from terminal prices: the YES
+  ``GET /markets?closed=true&limit=100&offset={n}&order=volumeNum&
+  ascending=false`` — fields vary, so parsing is defensive. Highest-volume
+  first: the id-ordered stream is all same-day sports micro-markets with
+  1-2 price points, while top-volume markets are long-lived with rich CLOB
+  histories. It also keeps the scan inside Gamma's ~2000-offset cap (past
+  it, 422 = treated as end of list). Outcome inference from terminal
+  prices: the YES
   entry of ``outcomePrices`` >= 0.98 -> outcome 1, <= 0.02 -> outcome 0,
   anything in between is skipped (ambiguous terminal prices excluded — a
   documented judgment call).
@@ -180,9 +185,20 @@ class PolymarketClient(VenueClient):
         yielded = 0
         offset = 0
         while yielded < max_markets:
-            data = self._get(self.gamma_base, "/markets", {
-                "closed": "true", "limit": 100, "offset": offset,
-            })
+            try:
+                data = self._get(self.gamma_base, "/markets", {
+                    "closed": "true", "limit": 100, "offset": offset,
+                    # Highest volume first: the id-ordered stream is all
+                    # same-day sports micro-markets with 1-2 price points;
+                    # top-volume markets are long-lived with rich CLOB
+                    # histories (and stay inside Gamma's ~2000-offset cap —
+                    # past it, 422 = treated as end of list).
+                    "order": "volumeNum", "ascending": "false",
+                })
+            except VenueUnavailableError as exc:
+                if "422" in str(exc):  # Gamma offset cap: treat as end of list
+                    break
+                raise
             if not isinstance(data, list):
                 raise VenueUnavailableError(
                     self.venue, f"{self.gamma_base}/markets",
