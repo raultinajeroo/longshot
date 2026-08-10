@@ -5,6 +5,11 @@ urllib with a descriptive User-Agent, a 20s timeout, up to 3 retries with
 exponential backoff (0.5s, 1.5s, 4.5s), and a polite sleep between
 paginated calls. Failures raise :class:`VenueUnavailableError` with the
 venue, the URL, and a remedy hint pointing at offline inputs.
+
+Other 4xx responses abort immediately, but **429 is retried** on a longer
+ladder (5s, 15s, 45s) and honours ``Retry-After``. It is the one client
+error that means "try again", and treating it like a 404 turns an ordinary
+rate limit into a failed run.
 """
 
 from __future__ import annotations
@@ -21,6 +26,10 @@ from ..types import MarketSeries
 USER_AGENT = "longshot/0.1 (+https://github.com/)"
 TIMEOUT_S = 20
 BACKOFF_S = (0.5, 1.5, 4.5)
+# 429 gets its own, longer ladder: the generic backoff is tuned for a flaky
+# connection, while a rate limit needs the bucket to actually refill.
+RATE_LIMIT_BACKOFF_S = (5.0, 15.0, 45.0)
+TOO_MANY_REQUESTS = 429
 POLITE_SLEEP_S = 0.25
 REMEDY_HINT = (
     "this host may be blocked in your network; use --input "
@@ -31,16 +40,39 @@ REMEDY_HINT = (
 class VenueUnavailableError(Exception):
     """Raised when a venue cannot be reached or serves unusable data.
 
-    The message always names the venue and includes a remedy hint.
+    The message always names the venue and includes a remedy hint. Callers
+    that know the failure is *not* a reachability problem pass their own
+    ``remedy``: a budget guard tripping and a blocked host are different
+    events, and reporting the first as the second sends the reader hunting
+    a network fault that does not exist.
     """
 
-    def __init__(self, venue: str, url: str, detail: str) -> None:
+    def __init__(
+        self, venue: str, url: str, detail: str, remedy: str = REMEDY_HINT
+    ) -> None:
         self.venue = venue
         self.url = url
         self.detail = detail
+        self.remedy = remedy
         super().__init__(
-            f"{venue} unavailable: {detail} (url: {url}). Remedy: {REMEDY_HINT}"
+            f"{venue} unavailable: {detail} (url: {url}). Remedy: {remedy}"
         )
+
+
+def _retry_after(exc: Exception) -> float:
+    """Seconds requested by a ``Retry-After`` header; 0 when absent or odd.
+
+    Only the delta-seconds form is honoured. The HTTP-date form is legal but
+    unused by the venues here, and guessing at clock skew to parse it would
+    trade a known wait for an unknown one.
+    """
+    headers = getattr(exc, "headers", None)
+    if headers is None:
+        return 0.0
+    try:
+        return max(0.0, float(headers.get("Retry-After", "")))
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def http_get_json(
@@ -62,11 +94,22 @@ def http_get_json(
                 return json.loads(resp.read().decode("utf-8"))
         except (urllib.error.URLError, OSError, json.JSONDecodeError) as exc:
             last = exc
-            # 4xx responses are client errors; retrying will not help.
-            if isinstance(exc, urllib.error.HTTPError) and 400 <= exc.code < 500:
+            rate_limited = (
+                isinstance(exc, urllib.error.HTTPError) and exc.code == TOO_MANY_REQUESTS
+            )
+            # 4xx responses are client errors and retrying will not help --
+            # except 429, whose entire contract is "retry me later".
+            if (
+                isinstance(exc, urllib.error.HTTPError)
+                and 400 <= exc.code < 500
+                and not rate_limited
+            ):
                 break
             if attempt < len(BACKOFF_S) - 1:
-                time.sleep(BACKOFF_S[attempt])
+                delay = BACKOFF_S[attempt]
+                if rate_limited:
+                    delay = max(RATE_LIMIT_BACKOFF_S[attempt], _retry_after(exc))
+                time.sleep(delay)
     raise VenueUnavailableError(venue, url, str(last))
 
 
