@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Both real-money collectors have now been exercised against their live
+  APIs (2026-08-10). The venue table and the retrieval notes say what each
+  one does and why the default ordering does not work on either.
+
 ### Fixed
 
 - **Kalshi collector returned zero markets.** It paged `/markets?status=settled`,

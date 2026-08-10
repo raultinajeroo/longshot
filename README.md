@@ -207,14 +207,17 @@ One JSON object per line (JSONL):
 | Venue | Status | Key | Notes |
 |---|---|---|---|
 | Manifold | bundled sample + live collector | none | fully exercised from the build machine; bundled sample of 278 markets committed |
-| Polymarket | live collector (Gamma + CLOB) | none | network-gated; parsers unit-tested against canonical payloads; outcome inferred from terminal prices; 12h history fidelity |
+| Polymarket | live collector (Gamma + CLOB) | none | exercised live 2026-08-10; scans highest-volume-first (see below); outcome inferred from terminal prices; 12h history fidelity |
 | Kalshi | live collector (series -> historical markets + candlesticks) | none today | exercised live 2026-08-10; daily candles; walks series rather than the settled stream (see below); sends `Authorization: Bearer $KALSHI_API_KEY` only if set |
 | fixture | offline | none | loads any JSONL in store format (bundled data, simulator output, prior fetches) |
 
-The Polymarket collector was written defensively but **has not been
-exercised against the live API**; its parsers are tested against
-recorded/canonical payloads and its failure mode is a clear
-`VenueUnavailableError` with a remedy hint.
+**Both real-money collectors avoid the same trap, by different means.**
+Polymarket scans highest-volume-first (`order=volumeNum&ascending=false`)
+because its id-ordered stream is all same-day sports micro-markets with
+one or two price points. Kalshi needs the equivalent move, described next.
+The general shape: on both venues the default ordering surfaces
+high-frequency markets that carry no usable price history, and a collector
+that takes the stream as given gets nothing while appearing to work.
 
 **Kalshi retrieval walks the series catalogue, not the settled stream.**
 This is worth stating because the obvious approach does not work. Paging
