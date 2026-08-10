@@ -180,6 +180,50 @@ def test_kalshi_fixed_point_payloads():
     assert [pt.price for pt in candles] == [0.73, 0.01]
 
 
+def test_kalshi_candle_string_close_is_dollars_not_cents():
+    """A *string* `price.close` is already dollars and must not be scaled.
+
+    Recorded live 2026-08-10: the historical candlesticks endpoint returns
+    `price.close` as a decimal string ("0.2100") and carries no
+    `close_dollars` key at all, so the pre-2026-08-10 parser took its
+    "legacy integer cents" branch and divided dollars by 100. Every price
+    in a 30-market fetch came back 100x small -- and passed every range
+    check, because a 100x-shrunk probability is still in [0, 1].
+
+    The regression is only visible against outcomes: markets that settled
+    YES had prices that never exceeded 0.01, which cannot happen.
+    """
+    candles = parse_candlesticks({"candlesticks": [
+        {"end_period_ts": 1767139200, "price": {"close": "0.2100"}},
+        {"end_period_ts": 1767225600, "price": {"close": "0.9900"}},
+    ]})
+    assert [pt.price for pt in candles] == [0.21, 0.99]
+    # The integer form still means cents, so both encodings must coexist.
+    assert parse_candlesticks({"candlesticks": [
+        {"end_period_ts": 1767139200, "price": {"close": 21}},
+    ]})[0].price == 0.21
+
+
+def test_kalshi_candle_falls_back_to_previous_when_no_trade():
+    """`price.close` is null on days the market did not trade.
+
+    Long-lived political markets go quiet for days at a time; dropping
+    those candles leaves holes exactly at the horizons the analysis
+    measures. `previous` is what the market was still saying, so it fills
+    the gap. Observed on KXEDMONTONGRIESBACH-25-NDP: 16 candles, all with
+    a null close, of which only the last carried a `previous`.
+    """
+    candles = parse_candlesticks({"candlesticks": [
+        {"end_period_ts": 1767139200,
+         "price": {"close": None, "previous": "0.0200"}},
+        {"end_period_ts": 1767225600,
+         "price": {"close": "0.3300", "previous": "0.0200"}},
+        # No usable price at all: dropped rather than guessed.
+        {"end_period_ts": 1767312000, "price": {"close": None, "previous": None}},
+    ]})
+    assert [pt.price for pt in candles] == [0.02, 0.33]
+
+
 def test_kalshi_market_without_series_or_event_is_skipped():
     assert parse_settled_market({
         "ticker": "T", "result": "yes",
