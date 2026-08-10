@@ -208,14 +208,28 @@ One JSON object per line (JSONL):
 |---|---|---|---|
 | Manifold | bundled sample + live collector | none | fully exercised from the build machine; bundled sample of 278 markets committed |
 | Polymarket | live collector (Gamma + CLOB) | none | network-gated; parsers unit-tested against canonical payloads; outcome inferred from terminal prices; 12h history fidelity |
-| Kalshi | live collector (v2 settled + candlesticks) | none today | network-gated; parsers unit-tested; daily candles; sends `Authorization: Bearer $KALSHI_API_KEY` only if set |
+| Kalshi | live collector (series -> historical markets + candlesticks) | none today | exercised live 2026-08-10; daily candles; walks series rather than the settled stream (see below); sends `Authorization: Bearer $KALSHI_API_KEY` only if set |
 | fixture | offline | none | loads any JSONL in store format (bundled data, simulator output, prior fetches) |
 
-Polymarket and Kalshi collectors were written defensively but **could not
-be exercised against the live APIs from the build sandbox** (only
-api.manifold.markets is reachable); their parsers are tested against
-recorded/canonical payloads and their failure mode is a clear
+The Polymarket collector was written defensively but **has not been
+exercised against the live API**; its parsers are tested against
+recorded/canonical payloads and its failure mode is a clear
 `VenueUnavailableError` with a remedy hint.
+
+**Kalshi retrieval walks the series catalogue, not the settled stream.**
+This is worth stating because the obvious approach does not work. Paging
+`/markets?status=settled` returns markets with a median lifetime of ~11
+minutes — sports micro-parlays, then hourly commodity and temperature
+series, then per-game props. Measured over 6,000 consecutive rows, *none*
+lived the ~25 hours needed to produce two daily candles. Every
+undifferentiated stream is ordered by recency and high-frequency series own
+recency, so filtering one layer only exposes the next. Separately,
+`/historical/cutoff` reports that markets settled before a moving boundary
+leave `status=settled` altogether, which is where essentially every
+long-lived political market already is. The collector therefore lists
+series once (`/series` returns the whole catalogue in a single uncursored
+call), drops hourly/daily cadences, and reads each series from the
+historical tier.
 
 ## Methods, in formulas
 
