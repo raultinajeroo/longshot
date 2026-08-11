@@ -179,14 +179,28 @@ class PolymarketClient(VenueClient):
         max_markets: int = 250,
         seed: int = 42,
         progress_cb: Callable[[str], None] | None = None,
+        tag_id: int | None = None,
         **kwargs,
     ) -> Iterator[MarketSeries]:
-        """Yield closed Polymarket markets with CLOB price histories."""
+        """Yield closed Polymarket markets with CLOB price histories.
+
+        ``tag_id`` restricts the scan to one Gamma tag (2 = Politics). Without
+        it the top-volume stream spans all categories, which makes any
+        comparison against a politics-only venue like Kalshi a contrast in
+        category composition rather than in venue.
+        """
+        category = "uncategorized"
+        if tag_id is not None:
+            # Label rows with the tag actually applied, so a mixed store can
+            # never be mistaken for a filtered one after the fact.
+            meta = self._get(self.gamma_base, f"/tags/{tag_id}", {})
+            if isinstance(meta, dict) and meta.get("slug"):
+                category = str(meta["slug"])
         yielded = 0
         offset = 0
         while yielded < max_markets:
             try:
-                data = self._get(self.gamma_base, "/markets", {
+                params = {
                     "closed": "true", "limit": 100, "offset": offset,
                     # Highest volume first: the id-ordered stream is all
                     # same-day sports micro-markets with 1-2 price points;
@@ -194,7 +208,10 @@ class PolymarketClient(VenueClient):
                     # histories (and stay inside Gamma's ~2000-offset cap —
                     # past it, 422 = treated as end of list).
                     "order": "volumeNum", "ascending": "false",
-                })
+                }
+                if tag_id is not None:
+                    params["tag_id"] = tag_id
+                data = self._get(self.gamma_base, "/markets", params)
             except VenueUnavailableError as exc:
                 if "422" in str(exc):  # Gamma offset cap: treat as end of list
                     break
@@ -228,7 +245,7 @@ class PolymarketClient(VenueClient):
                     venue=self.venue,
                     market_id=parsed["id"],
                     question=parsed["question"],
-                    category="uncategorized",
+                    category=category,
                     created_ts=parsed["created_ts"],
                     resolved_ts=parsed["resolved_ts"],
                     outcome=parsed["outcome"],

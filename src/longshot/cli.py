@@ -60,6 +60,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--max-bets-per-market", type=int, default=4000)
     p.add_argument("--max-calls", type=int, default=5000,
                    help="hard cap on HTTP requests")
+    p.add_argument("--tag-id", type=int,
+                   help="polymarket only: restrict to one Gamma tag "
+                        "(2 = Politics). Use this to build a like-for-like "
+                        "subset when comparing against a single-category "
+                        "venue; rows are labeled with the tag slug.")
     _add_common_fetch(p)
 
     p = sub.add_parser(
@@ -168,6 +173,7 @@ def _cmd_fetch(args: argparse.Namespace) -> int:
             max_bets_per_market=getattr(args, "max_bets_per_market", 4000),
             seed=args.seed,
             progress_cb=progress,
+            tag_id=getattr(args, "tag_id", None),
         )
         n = write_jsonl(out, markets)
     except VenueUnavailableError as exc:
