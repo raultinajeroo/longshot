@@ -20,8 +20,10 @@ longshot demo
 
 The demo analyzes the bundled sample of **278 real resolved Manifold
 markets** (fetched 2026-07-31; see `data/bundled/SOURCES.md`), fits Platt
-and isotonic corrections on the earliest 60% by resolution date, evaluates
-them on the rest, renders `examples/demo/report_bundled.html`, and runs
+and isotonic corrections starting from the earliest 60% by resolution date,
+removes training labels unavailable before each horizon's first test
+observation, evaluates on the remaining 40%, and renders
+`examples/demo/report_bundled.html`. It also runs
 the same pipeline on a fixture with planted bias. Actual output of the
 committed run (`examples/demo/run_output.txt`):
 
@@ -43,17 +45,18 @@ horizon      n   Brier     ECE   skill   slope      slope 95% CI
 slope > 1: prices compressed toward 0.5 (underconfident); slope < 1: overconfident
 
 out-of-sample correction (test split by resolution date):
+At each horizon, training outcomes must resolve strictly before the earliest test price observation. Training panel counts (kept/purged): 30d: 90/16; 14d: 96/11; 7d: 96/7; 3d: 92/9; 1d: 73/3; 12h: 70/0; 1h: 44/0. Bootstrap unit: market; test groups: 30d: 57, 14d: 69, 7d: 58, 3d: 73, 1d: 53, 12h: 41, 1h: 12. Related markets can make market-level intervals too narrow.
 horizon method       dBrier              95% CI  verdict
 ------------------------------------------------------------------------
-30d     platt       +0.0063  [-0.0080, +0.0202]  no reliable improvement
-30d     isotonic    +0.0149  [-0.0058, +0.0337]  no reliable improvement
-14d     platt       +0.0076  [-0.0096, +0.0277]  no reliable improvement
-14d     isotonic    +0.0137  [-0.0161, +0.0436]  no reliable improvement
-7d      platt       +0.0045  [-0.0099, +0.0189]  no reliable improvement
-7d      isotonic    +0.0119  [-0.0174, +0.0410]  no reliable improvement
-3d      platt       -0.0113  [-0.0253, +0.0024]  no reliable improvement
+30d     platt       +0.0033  [-0.0059, +0.0122]  no reliable improvement
+30d     isotonic    +0.0134  [-0.0028, +0.0282]  no reliable improvement
+14d     platt       +0.0054  [-0.0090, +0.0223]  no reliable improvement
+14d     isotonic    +0.0039  [-0.0225, +0.0319]  no reliable improvement
+7d      platt       +0.0053  [-0.0092, +0.0202]  no reliable improvement
+7d      isotonic    +0.0119  [-0.0172, +0.0408]  no reliable improvement
+3d      platt       -0.0112  [-0.0253, +0.0026]  no reliable improvement
 3d      isotonic    +0.0053  [-0.0191, +0.0341]  no reliable improvement
-1d      platt       -0.0056  [-0.0179, +0.0075]  no reliable improvement
+1d      platt       -0.0048  [-0.0175, +0.0085]  no reliable improvement
 1d      isotonic    +0.0211  [+0.0046, +0.0404]  reliable degradation
 12h     platt       -0.0042  [-0.0222, +0.0146]  no reliable improvement
 12h     isotonic    +0.0241  [-0.0097, +0.0599]  no reliable improvement
@@ -120,10 +123,12 @@ biased, with sample sizes and confidence intervals attached.
   calibration slope on logit(p) (the favorite-longshot direction);
   per-category YES-price inflation with CIs.
 - **Correction layer**: Platt scaling and isotonic regression (PAVA) fit
-  on the earliest 60% of markets by resolution date, evaluated on the
-  later test split: delta-Brier, delta-log-loss, ECE before/after,
+  on the earliest 60% of markets by resolution date after removing outcomes
+  that settle at or after the earliest test price observation per horizon.
+  Evaluated on the later test split: delta-Brier, delta-log-loss, ECE before/after,
   bootstrap CI of delta-Brier, and an explicit verdict. If the CI includes
   0 the verdict is `no reliable improvement`, and the demo prints it.
+  Equal prices are pooled with their counts before isotonic fitting.
 - **Venues**: Manifold (fully working, no key), Polymarket and Kalshi
   collectors (keyless, network-gated), a fixture venue for any local
   JSONL, and a seeded synthetic-market simulator with planted-bias modes.
@@ -141,7 +146,7 @@ pip install -e .        # numpy + pyyaml, Python >= 3.11
 longshot fetch --venue manifold --out data/manifold.jsonl [--max-markets 250] [--max-bets-per-market 4000] [--max-calls 5000] [--seed 42]
 longshot fetch --venue polymarket|kalshi --out FILE [--max-markets N]
 longshot analyze --input FILE [FILE ...] [--out analysis.json] [--config analysis.yaml] [--horizons 30d,14d,7d,3d,1d,12h,1h] [--bins 10] [--min-per-bin 30] [--bootstrap 1000] [--seed 42]
-longshot correct --input FILE [--method isotonic|platt|both] [--train-frac 0.6] [--config analysis.yaml] [--out correction.json]
+longshot correct --input FILE [--method isotonic|platt|both] [--train-frac 0.6] [--config analysis.yaml] [--bootstrap-unit market|resolution-day|resolution-week] [--out correction.json]
 longshot report --analysis analysis.json [--correction correction.json] --out report.html [--title T]
 longshot publish --analysis analysis.json [--correction correction.json] --out site/ [--title T]
 longshot venues
@@ -164,6 +169,16 @@ improvement appears). `longshot analyze --config analysis.yaml` and
 file; explicit CLI flags override it, and such a deviation should be
 reported with the result. Running `--config analysis.yaml` on the bundled
 sample reproduces the committed demo numbers exactly (covered by tests).
+
+To check whether related resolutions make the correction interval too
+narrow, rerun the same input with `--bootstrap-unit resolution-day` and
+`--bootstrap-unit resolution-week`, saving each result separately. These
+explicit exploratory runs resample all test markets in each fixed UTC day
+or seven-day block together; blocks start at the Unix epoch. They preserve
+the fitted correction and point estimate. The JSON and reports name the
+unit and number of test groups, and skip intervals with fewer than two
+groups. Time blocks are a proxy for dependence, not known independent
+events. The registered default and analyze-mode CIs remain market-level.
 
 ## Publishing a note (`longshot publish`)
 
@@ -219,7 +234,20 @@ does not recover a complete polling history. Shorter exploratory horizons
 such as `--horizons 1h,5m` already work; disclose them as deviations from the
 pre-registered config. Coverage and thin-support rules still apply.
 Correction needs at least two markets for a train/test split and at least
-20 panel points in each split before a horizon can be scored.
+20 panel points in each split after removing unavailable training labels
+before a horizon can be scored. Correction JSON records
+`split_protocol=purged_before_test_observation`, per-horizon retained and
+removed counts, and the settlement/observation cutoffs. All report formats
+flag older correction files that lack this timing check; regenerate them
+with `longshot correct` before drawing conclusions.
+
+Settlement times can differ across venues for the same event. A horizon
+relative to each venue's settlement therefore compares different clock
+times. For a simultaneous comparison, align quotes to an explicitly chosen
+common observation time; do not infer a venue advantage from settlement
+timing alone. Repeated snapshots and related event legs are not independent
+outcomes, and midpoint calibration alone does not establish returns after
+spreads, fees, or execution costs.
 
 ### JSONL schema
 
@@ -287,8 +315,9 @@ historical tier.
   `logit(p)`; slope < 1 means longshots overpriced relative to favorites.
 - Climatology: Brier of the constant forecaster `p = ybar`; skill
   `= 1 - Brier / Brier_clim`.
-- Correction: train/test split by resolution date (no leakage, tested);
-  Platt `sigmoid(a + b*logit(p))`; isotonic via pool-adjacent-violators
+- Correction: initial train/test split by resolution date, with training
+  outcomes required to settle strictly before the earliest test price
+  observation per horizon; Platt `sigmoid(a + b*logit(p))`; isotonic via pool-adjacent-violators
   with clamped step interpolation; verdict from the bootstrap CI of
   out-of-sample delta-Brier.
 
@@ -328,7 +357,7 @@ historical tier.
 
 ```bash
 pip install -e ".[dev]"
-python -m pytest -q     # 63 tests, all offline, seeded
+python -m pytest -q     # 88 tests, all offline, seeded
 ```
 
 CI runs the suite on Python 3.11 and 3.12 (`.github/workflows/ci.yml`).

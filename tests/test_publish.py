@@ -98,6 +98,8 @@ def test_publish_writes_all_artifacts(tmp_path):
     assert prov["manifold_only_methodology_demo"] is True
     assert prov["inputs"]["analysis"]["sha256"]
     assert prov["inputs"]["correction"]["sha256"]
+    assert prov["correction_protocol"]["split_protocol"] == "purged_before_test_observation"
+    assert prov["correction_protocol"]["bootstrap_unit"] == "market"
     statuses = {r["venue"]: r["status"] for r in prov["venue_status"]}
     assert "bundled sample" in statuses["manifold"]
     assert "NOT exercised live" in statuses["polymarket"]

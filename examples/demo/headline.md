@@ -12,8 +12,9 @@ over- nor underconfident. Caveat: most horizons have 1–2 non-sparse bins,
 so these slopes rest on thin support (flagged `*` in the report).
 
 **2. The correction layer cannot beat the raw market price out-of-sample.**
-Platt and isotonic corrections, fit on the earliest 60% of markets by
-resolution date and evaluated on the rest, show **no reliable improvement**
+Platt and isotonic corrections start from the earliest 60% of markets by
+resolution date, remove labels unavailable before the first test price
+observation at each horizon, and evaluate on the rest. They show **no reliable improvement**
 at 11 of 12 horizon/method pairs; the twelfth (1d isotonic) is a
 **reliable degradation**. The pipeline reports that verdict as computed;
 it is never re-tuned until the answer looks better. The sanity anchor

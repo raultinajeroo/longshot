@@ -4,10 +4,13 @@ Protocol (honesty by construction):
 
 1. Split *markets* by resolution time: the earliest ``train_frac`` of
    markets (by resolved_ts) form the train set, the rest the test set.
-   No market appears in both; there is no leakage across the time cut.
-2. Fit the correction map on TRAIN horizon panels only, per horizon.
+   No market appears in both. For each horizon, remove training labels
+   resolving at or after the earliest TEST price observation. Ordering
+   settlements alone does not establish when outcomes were available.
+2. Fit the correction map on the remaining TRAIN panel, per horizon.
 3. Evaluate raw vs corrected on TEST panels: delta-Brier, delta-logloss,
-   ECE before/after, and a market-level bootstrap CI for delta-Brier.
+   ECE before/after, and a bootstrap CI for delta-Brier (whole markets by
+   default; optional resolution-time blocks for dependence checks).
 4. If the CI of delta-Brier includes 0, the verdict field is
    "no reliable improvement". Callers must surface this; the demo prints
    it verbatim. A correction that does not beat the raw market price
@@ -79,10 +82,9 @@ def fit_platt(p: np.ndarray, y: np.ndarray) -> PlattModel:
 def fit_isotonic(p: np.ndarray, y: np.ndarray) -> IsotonicModel:
     """Fit monotone non-decreasing isotonic regression via PAVA.
 
-    Pairs are sorted by p; pool-adjacent-violators merges adjacent blocks
-    whose means violate monotonicity. Blocks are then expanded back into
-    per-observation knots (block means repeated), so prediction is a plain
-    step function over sorted p values.
+    Equal prices are pooled first so labels at a tied price cannot depend
+    on input order. Pool-adjacent-violators then merges adjacent blocks
+    whose weighted means violate monotonicity.
     """
     p = np.asarray(p, dtype=float)
     y = np.asarray(y, dtype=float)
@@ -90,27 +92,25 @@ def fit_isotonic(p: np.ndarray, y: np.ndarray) -> IsotonicModel:
         raise ValueError("fit_isotonic: empty or mismatched input")
     order = np.argsort(p, kind="mergesort")
     ps, ys = p[order], y[order]
-    # PAVA over unit-weighted blocks.
-    blocks: list[list[float]] = []  # each block: [sum_y, count]
-    for v in ys:
-        blocks.append([float(v), 1.0])
+    knots, starts, counts = np.unique(ps, return_index=True, return_counts=True)
+    sums = np.add.reduceat(ys, starts)
+    # Each block carries its number of distinct knots as well as its weight.
+    blocks: list[list[float]] = []  # [sum_y, observation_count, knot_count]
+    for total, count in zip(sums, counts):
+        blocks.append([float(total), float(count), 1])
         while len(blocks) >= 2:
             m1 = blocks[-2][0] / blocks[-2][1]
             m2 = blocks[-1][0] / blocks[-1][1]
             if m1 <= m2:
                 break
             blocks[-2] = [blocks[-2][0] + blocks[-1][0],
-                          blocks[-2][1] + blocks[-1][1]]
+                          blocks[-2][1] + blocks[-1][1],
+                          blocks[-2][2] + blocks[-1][2]]
             blocks.pop()
-    knots: list[float] = []
     values: list[float] = []
-    i = 0
-    for sum_y, cnt in blocks:
-        cnt_i = int(cnt)
-        knots.extend(float(ps[j]) for j in range(i, i + cnt_i))
-        values.extend([sum_y / cnt_i] * cnt_i)
-        i += cnt_i
-    return IsotonicModel(knots=tuple(knots), values=tuple(values))
+    for sum_y, count, knot_count in blocks:
+        values.extend([sum_y / count] * int(knot_count))
+    return IsotonicModel(knots=tuple(float(k) for k in knots), values=tuple(values))
 
 
 def split_by_resolution_time(
@@ -147,22 +147,27 @@ def run_correction(
     min_per_bin: int = 30,
     n_boot: int = 1000,
     seed: int = 42,
+    bootstrap_unit: str = "market",
 ) -> dict:
     """Fit corrections on the train split; evaluate honestly on the test split.
 
     Returns a JSON-serializable dict with per-horizon, per-method results.
     Per horizon h and method m: raw and corrected Brier/log-loss/ECE on
-    the TEST panel, delta-Brier with a market-level bootstrap CI, and the
+    the TEST panel, delta-Brier with the selected bootstrap unit, and the
     verdict ("reliable improvement" only if the CI excludes 0 on the
     improvement side; "no reliable improvement" otherwise).
     """
     if method not in ("platt", "isotonic", "both"):
         raise ValueError(f"correct: unknown method {method!r}")
+    if bootstrap_unit not in ("market", "resolution-day", "resolution-week"):
+        raise ValueError(f"correct: unknown bootstrap unit {bootstrap_unit!r}")
     train, test = split_by_resolution_time(markets, train_frac)
     methods = ["platt", "isotonic"] if method == "both" else [method]
 
     out = {
         "method": method,
+        "split_protocol": "purged_before_test_observation",
+        "bootstrap_unit": bootstrap_unit,
         "train_frac": train_frac,
         "n_train_markets": len(train),
         "n_test_markets": len(test),
@@ -173,11 +178,40 @@ def run_correction(
     for h in horizons:
         train_panel = build_panel(train, horizon_seconds[h], h)
         test_panel = build_panel(test, horizon_seconds[h], h)
+        n_before = len(train_panel)
+        first_test_ts = min((q.observed_ts for q in test_panel.points), default=None)
+        if first_test_ts is not None:
+            train_panel = HorizonPanel(
+                name=h, seconds=horizon_seconds[h],
+                points=tuple(q for q in train_panel.points
+                             if q.resolved_ts < first_test_ts),
+            )
         p_tr, y_tr = _panel_xy(train_panel)
         p_te, y_te = _panel_xy(test_panel)
-        entry: dict = {"n_train": len(train_panel), "n_test": len(test_panel)}
+        grouped_indices: dict[int, list[int]] = {}
+        for i, point in enumerate(test_panel.points):
+            key = i if bootstrap_unit == "market" else point.resolved_ts // (
+                86400 if bootstrap_unit == "resolution-day" else 7 * 86400
+            )
+            grouped_indices.setdefault(key, []).append(i)
+        groups = list(grouped_indices.values())
+        entry: dict = {
+            "n_train": len(train_panel), "n_test": len(test_panel),
+            "n_test_groups": len(groups),
+            "n_train_before_purge": n_before,
+            "n_train_purged": n_before - len(train_panel),
+            "train_max_resolved_ts": max(
+                (q.resolved_ts for q in train_panel.points), default=None),
+            "test_min_observed_ts": first_test_ts,
+        }
         if len(test_panel) < 20 or len(train_panel) < 20:
             entry["skipped"] = "too few train/test panel points (<20)"
+            if entry["n_train_purged"]:
+                entry["skipped"] += " after removing unavailable labels"
+            out["horizons"][h] = entry
+            continue
+        if len(groups) < 2:
+            entry["skipped"] = "need at least 2 test resolution groups for a bootstrap CI"
             out["horizons"][h] = entry
             continue
         entry["raw"] = {
@@ -198,14 +232,14 @@ def run_correction(
             d_brier = float(brier(p_hat, y_te) - brier(p_te, y_te))
 
             def stat(pts, _model=model, _p_te=p_te, _y_te=y_te) -> float:
-                idx = [q for q in pts]
+                idx = [i for group in pts for i in group]
                 return float(
                     brier(_model.predict(_p_te[idx]), _y_te[idx])
                     - brier(_p_te[idx], _y_te[idx])
                 )
 
             lo, hi = bootstrap_groups_ci(
-                list(range(len(p_te))), stat, n_boot=n_boot, seed=seed
+                groups, stat, n_boot=n_boot, seed=seed
             )
             entry[m_name] = {
                 "brier": float(brier(p_hat, y_te)),
@@ -223,6 +257,31 @@ def run_correction(
             }
         out["horizons"][h] = entry
     return out
+
+
+def correction_timing_note(correction: dict) -> str:
+    """Describe the timing check, including when a saved result lacks it."""
+    if correction.get("split_protocol") != "purged_before_test_observation":
+        return (
+            "Legacy correction: training-label availability at test observation "
+            "time was not checked. Rerun longshot correct to apply that check."
+        )
+    counts = "; ".join(
+        f"{h}: {e['n_train']}/{e['n_train_purged']}"
+        for h, e in correction["horizons"].items()
+    )
+    unit = correction.get("bootstrap_unit", "market")
+    groups = ", ".join(f"{h}: {e.get('n_test_groups', e['n_test'])}"
+                       for h, e in correction["horizons"].items())
+    return (
+        "At each horizon, training outcomes must resolve strictly before the "
+        "earliest test price observation. Training panel counts (kept/purged): "
+        + counts + f". Bootstrap unit: {unit}; test groups: {groups}. "
+        + ("Related markets can make market-level intervals too narrow."
+           if unit == "market" else
+           "Resolution time blocks are a dependence sensitivity check, "
+           "not verified independent events.")
+    )
 
 
 def _safe_ece(p: np.ndarray, y: np.ndarray, n_bins: int, min_per_bin: int) -> float:

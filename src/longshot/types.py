@@ -60,6 +60,7 @@ class HorizonPoint:
     resolved_ts: int
     p: float  # probability of YES, observed `horizon` before resolution
     outcome: int  # 1 = resolved YES, 0 = NO
+    observed_ts: int | None = None  # timestamp of the carried price
 
 
 @dataclass(frozen=True)

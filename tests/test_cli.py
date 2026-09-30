@@ -45,6 +45,16 @@ def test_correct_single_market_is_a_clean_input_error(tmp_path, capsys):
     assert out.read_text() == "keep existing output"
 
 
+def test_correct_discloses_resolution_bootstrap_unit(tmp_path, capsys):
+    out = tmp_path / "correction.json"
+    assert main(["correct", "--input", str(FIXTURE), "--out", str(out),
+                 "--horizons", "14d", "--bootstrap", "20",
+                 "--bootstrap-unit", "resolution-day"]) == 0
+    result = json.loads(out.read_text())
+    assert result["bootstrap_unit"] == "resolution-day"
+    assert "resolution-day" in capsys.readouterr().out
+
+
 def test_simulate_cli(tmp_path):
     out = tmp_path / "sim.jsonl"
     assert main(["simulate", "--mode", "calibrated", "--markets", "10",

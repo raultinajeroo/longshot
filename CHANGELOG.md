@@ -15,6 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Correction training excludes outcomes that settled at or after the
+  earliest test price observation at each horizon. Resolution ordering
+  alone allowed look-ahead. Reports expose retained and removed counts,
+  skipped horizons, and legacy results lacking the availability check.
+- Isotonic calibration pools equal prices with their observation weights
+  before PAVA, making predictions independent of tied rows' ordering.
+- Empty requested horizon panels render an explanatory report instead of
+  failing while drawing the reliability diagram.
 - Correction on a one-market input reports exit code 4 with the minimum
   sample requirement instead of a traceback; existing output is preserved.
 - **Kalshi collector returned zero markets.** It paged `/markets?status=settled`,
@@ -43,6 +51,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `longshot correct --bootstrap-unit resolution-day|resolution-week`
+  resamples whole time blocks as an explicit dependence sensitivity check.
+  Reports disclose the unit and group counts. The registered default remains
+  market-level resampling; fewer than two test blocks cannot produce a CI.
 - Direct pmwatch JSONL ingestion documented and tested at 1h and 5m
   horizons. Explicit price-estimator counts now appear in analysis and
   publication provenance, with midpoint and mixed-estimator notes in all

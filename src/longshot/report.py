@@ -14,6 +14,7 @@ import math
 from pathlib import Path
 
 from .analyze import price_estimator_note
+from .correct import correction_timing_note
 
 
 _CSS = """
@@ -46,6 +47,8 @@ def _fmt(x: float | None, digits: int = 4) -> str:
 
 def _reliability_svg(entry: dict) -> str:
     """Reliability diagram: 45-degree line, bin points, CI whiskers."""
+    if entry.get("skipped"):
+        return "<p class='note'>No usable observations at this horizon.</p>"
     size, pad = 460, 46
     w = h = size
 
@@ -227,6 +230,10 @@ def render_html(
         for h in correction.get("horizons", {}):
             e = correction["horizons"][h]
             if e.get("skipped"):
+                rows.append(
+                    f"<tr><td>{esc(h)}</td><td colspan='6'>"
+                    f"Skipped: {esc(e['skipped'])}</td></tr>"
+                )
                 continue
             for meth in ("platt", "isotonic"):
                 r = e.get(meth)
@@ -248,9 +255,10 @@ def render_html(
         corr_html = (
             "<h2>out-of-sample correction</h2>"
             "<p class='note'>Correction maps (Platt scaling, isotonic "
-            "regression) are fit on the earliest "
+            "regression) start from the earliest "
             f"{correction['train_frac']:.0%} of markets by resolution date "
-            "and evaluated on the later test split. When the bootstrap CI "
+            "and are evaluated on the later test split. "
+            f"{esc(correction_timing_note(correction))} When the bootstrap CI "
             "of the Brier change includes 0 the verdict is "
             "<b>no reliable improvement</b> — reported, never hidden.</p>"
             "<table><thead><tr><th>horizon</th><th>method</th>"

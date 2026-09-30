@@ -92,6 +92,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--method", choices=["isotonic", "platt", "both"],
                    default="both")
     p.add_argument("--train-frac", type=float, default=0.6)
+    p.add_argument("--bootstrap-unit", default="market",
+                   choices=["market", "resolution-day", "resolution-week"],
+                   help="correction CI resampling unit; time blocks are an "
+                        "exploratory dependence check beyond analysis.yaml")
     p.add_argument("--out")
     p.add_argument("--config",
                    help="pre-registered analysis.yaml; supplies defaults "
@@ -257,6 +261,7 @@ def _cmd_correct(args: argparse.Namespace) -> int:
             markets, horizons=horizons, horizon_seconds=seconds,
             method=method,
             train_frac=pick(args.train_frac, 0.6, corr_cfg, "train_frac"),
+            bootstrap_unit=args.bootstrap_unit,
             n_bins=pick(args.bins, 10, config, "bins"),
             min_per_bin=pick(args.min_per_bin, 30, config, "min_per_bin"),
             n_boot=pick(args.bootstrap, 1000, config, "bootstrap"),

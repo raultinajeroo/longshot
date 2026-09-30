@@ -27,6 +27,19 @@ Judgment calls made during the build, and why.
 
 ## Statistics
 
+- **Training outcome availability (2026-09-30).** Preserve the declared
+  resolution-date split, then remove training panel points whose outcomes
+  settle at or after the earliest test price observation for that horizon.
+  Use the actual carried observation timestamp, which can precede the
+  target by up to one horizon. This is a correction to the no-look-ahead
+  protocol, not a change to the registered horizons, split fraction,
+  bootstrap, or verdict rules. Save per-horizon cutoffs and removed counts;
+  flag legacy correction artifacts that lack the check. Settlement time is
+  an availability proxy; this does not reconstruct exchange publication
+  latency, executable fills, or independence between related markets.
+- **Equal-price isotonic observations (2026-09-30).** Pool identical
+  probabilities before PAVA and retain their counts as weights. Otherwise
+  identical prices can receive predictions determined by input ordering.
 - **min_per_bin = 30 default (per spec), with a thin-support flag.** Real
   resolved-market price distributions are U-shaped (mass near 0 and 1), so
   equal-width binning at this sample size leaves only 1-2 non-sparse bins
@@ -47,7 +60,14 @@ Judgment calls made during the build, and why.
 - **Bootstrap resamples whole markets** (not points) everywhere, because
   points from the same market are dependent. Correction delta-CIs resample
   test-panel points, which is equivalent at one point per market per
-  horizon.
+  horizon. **Exploratory dependence checks (2026-09-30):** correction's
+  `--bootstrap-unit resolution-day|resolution-week` instead resamples all
+  test points in each fixed UTC time block together, retaining market
+  weighting inside each resample. Days and seven-day blocks are aligned to
+  the Unix epoch. Require at least two blocks and expose their count; time
+  blocks are proxies, not verified independent events. This option does not
+  change `analysis.yaml`, the fit, or the point estimate, only the correction
+  CI and its verdict. Analyze-mode calibration CIs remain market-level.
 - **Seeds.** All demo/report numbers use seed 42 with 1000 bootstrap
   resamples; tests use smaller fixed seeds/resamples for speed. The
   simulator defaults (sigma = 0.35, gamma = 5) were tuned so the

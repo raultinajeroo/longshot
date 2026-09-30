@@ -28,6 +28,7 @@ from pathlib import Path
 
 from . import __version__
 from .analyze import price_estimator_note
+from .correct import correction_timing_note
 from .report import write_report
 from .venues.status import MANIFOLD_ONLY_NOTE, is_manifold_only, venue_status
 
@@ -107,18 +108,19 @@ def render_summary(analysis: dict, correction: dict | None) -> str:
         lines.append("## Out-of-sample correction verdicts")
         lines.append("")
         lines.append(
-            "Corrections are fit on the earliest "
+            "Corrections start from the earliest "
             f"{correction['train_frac']:.0%} of markets by resolution date "
             "and evaluated on the later test split. Verdicts come from the "
             "bootstrap CI of delta-Brier and are reported as computed; the "
             "pipeline is never re-tuned until improvement appears."
         )
         lines.append("")
+        lines.extend([correction_timing_note(correction), ""])
         lines.append("| horizon | method | dBrier | 95% CI | verdict |")
         lines.append("|---|---|---:|---|---|")
         for h, e in correction.get("horizons", {}).items():
             if e.get("skipped"):
-                lines.append(f"| {h} | — | — | — | skipped |")
+                lines.append(f"| {h} | — | — | — | skipped: {e['skipped']} |")
                 continue
             for meth in ("platt", "isotonic"):
                 r = e.get(meth)
@@ -177,6 +179,11 @@ def build_provenance(
         "analysis_generated_at": analysis["generated_at"],
         "inputs": inputs,
         "params": analysis["params"],
+        "correction_protocol": {
+            "split_protocol": correction.get("split_protocol", "legacy"),
+            "bootstrap_unit": correction.get("bootstrap_unit", "market"),
+            "train_frac": correction["train_frac"],
+        } if correction else None,
         "dataset": {
             "label": analysis["label"],
             "n_markets": ds["n_markets"],

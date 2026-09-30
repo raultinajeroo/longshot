@@ -1,5 +1,5 @@
 longshot demo (offline) — longshot 0.1.0
-bundled data: /mnt/agents/output/portfolio/longshot/data/bundled/manifold_resolved_sample.jsonl
+bundled data: data/bundled/manifold_resolved_sample.jsonl
 
 longshot analysis: Manifold bundled resolved-market sample
 markets: 278 (YES 120, NO 158)
@@ -18,17 +18,18 @@ horizon      n   Brier     ECE   skill   slope      slope 95% CI
 slope > 1: prices compressed toward 0.5 (underconfident); slope < 1: overconfident
 
 out-of-sample correction (test split by resolution date):
+At each horizon, training outcomes must resolve strictly before the earliest test price observation. Training panel counts (kept/purged): 30d: 90/16; 14d: 96/11; 7d: 96/7; 3d: 92/9; 1d: 73/3; 12h: 70/0; 1h: 44/0. Bootstrap unit: market; test groups: 30d: 57, 14d: 69, 7d: 58, 3d: 73, 1d: 53, 12h: 41, 1h: 12. Related markets can make market-level intervals too narrow.
 horizon method       dBrier              95% CI  verdict
 ------------------------------------------------------------------------
-30d     platt       +0.0063  [-0.0080, +0.0202]  no reliable improvement
-30d     isotonic    +0.0149  [-0.0058, +0.0337]  no reliable improvement
-14d     platt       +0.0076  [-0.0096, +0.0277]  no reliable improvement
-14d     isotonic    +0.0137  [-0.0161, +0.0436]  no reliable improvement
-7d      platt       +0.0045  [-0.0099, +0.0189]  no reliable improvement
-7d      isotonic    +0.0119  [-0.0174, +0.0410]  no reliable improvement
-3d      platt       -0.0113  [-0.0253, +0.0024]  no reliable improvement
+30d     platt       +0.0033  [-0.0059, +0.0122]  no reliable improvement
+30d     isotonic    +0.0134  [-0.0028, +0.0282]  no reliable improvement
+14d     platt       +0.0054  [-0.0090, +0.0223]  no reliable improvement
+14d     isotonic    +0.0039  [-0.0225, +0.0319]  no reliable improvement
+7d      platt       +0.0053  [-0.0092, +0.0202]  no reliable improvement
+7d      isotonic    +0.0119  [-0.0172, +0.0408]  no reliable improvement
+3d      platt       -0.0112  [-0.0253, +0.0026]  no reliable improvement
 3d      isotonic    +0.0053  [-0.0191, +0.0341]  no reliable improvement
-1d      platt       -0.0056  [-0.0179, +0.0075]  no reliable improvement
+1d      platt       -0.0048  [-0.0175, +0.0085]  no reliable improvement
 1d      isotonic    +0.0211  [+0.0046, +0.0404]  reliable degradation
 12h     platt       -0.0042  [-0.0222, +0.0146]  no reliable improvement
 12h     isotonic    +0.0241  [-0.0097, +0.0599]  no reliable improvement

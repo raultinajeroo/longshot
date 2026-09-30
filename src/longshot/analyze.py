@@ -21,6 +21,7 @@ from .bias import (
     yes_price_inflation,
 )
 from .binning import equal_width_bins
+from .correct import correction_timing_note
 from .horizons import DEFAULT_HORIZONS, build_panel, parse_horizon
 from .metrics import (
     brier,
@@ -242,6 +243,7 @@ def format_digest(analysis: dict, correction: dict | None = None) -> str:
     if correction:
         lines.append("")
         lines.append("out-of-sample correction (test split by resolution date):")
+        lines.append(correction_timing_note(correction))
         lines.append(f"{'horizon':<8}{'method':<10}{'dBrier':>9}"
                      f"{'95% CI':>20}  verdict")
         lines.append("-" * 72)
