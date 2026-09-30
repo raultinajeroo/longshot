@@ -27,6 +27,7 @@ Methods:
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 
 import numpy as np
 
@@ -136,6 +137,40 @@ def _panel_xy(panel: HorizonPanel) -> tuple[np.ndarray, np.ndarray]:
     return p, y
 
 
+def _quoted_payoff(points, predictions, groups, *, cost_per_contract, n_boot, seed):
+    """Hypothetically buy one YES when its prediction clears ask plus cost.
+
+    Average over every quoted test market, including zero for abstentions.
+    The caller supplies groups from the same held-out panel as predictions.
+    """
+    quoted = {i for i, p in enumerate(points) if p.bid is not None and p.ask is not None}
+    quote_groups = [[i for i in group if i in quoted] for group in groups]
+    quote_groups = [group for group in quote_groups if group]
+    result = {"n_quoted": len(quoted), "n_missing_quotes": len(points) - len(quoted),
+              "n_groups": len(quote_groups)}
+    if len(quoted) < 20:
+        return {**result, "skipped": "too few quoted test points (<20)"}
+    if len(quote_groups) < 2:
+        return {**result, "skipped": "need at least 2 quoted test groups for a bootstrap CI"}
+    payoff = np.zeros(len(points))
+    selected = [i for i in quoted if predictions[i] > points[i].ask + cost_per_contract]
+    for i in selected:
+        payoff[i] = points[i].outcome - points[i].ask - cost_per_contract
+    lo, hi = bootstrap_groups_ci(
+        quote_groups, lambda sample: float(np.mean(payoff[[i for g in sample for i in g]])),
+        n_boot=n_boot, seed=seed,
+    )
+    result.update({
+        "n_selected": len(selected),
+        "total_payoff": float(np.sum(payoff)),
+        "mean_payoff": float(np.sum(payoff) / len(quoted)),
+        "mean_payoff_ci": [lo, hi],
+        "verdict": ("positive under stated assumptions" if lo > 0 else
+                    "negative under stated assumptions" if hi < 0 else "inconclusive"),
+    })
+    return result
+
+
 def run_correction(
     markets: list[MarketSeries],
     *,
@@ -148,6 +183,7 @@ def run_correction(
     n_boot: int = 1000,
     seed: int = 42,
     bootstrap_unit: str = "market",
+    cost_per_contract: float | None = None,
 ) -> dict:
     """Fit corrections on the train split; evaluate honestly on the test split.
 
@@ -161,6 +197,10 @@ def run_correction(
         raise ValueError(f"correct: unknown method {method!r}")
     if bootstrap_unit not in ("market", "resolution-day", "resolution-week"):
         raise ValueError(f"correct: unknown bootstrap unit {bootstrap_unit!r}")
+    if cost_per_contract is not None and (
+        not math.isfinite(cost_per_contract) or cost_per_contract < 0
+    ):
+        raise ValueError("correct: cost per contract must be finite and nonnegative")
     train, test = split_by_resolution_time(markets, train_frac)
     methods = ["platt", "isotonic"] if method == "both" else [method]
 
@@ -175,6 +215,8 @@ def run_correction(
         "test_min_resolved_ts": min(m.resolved_ts for m in test),
         "horizons": {},
     }
+    if cost_per_contract is not None:
+        out["cost_per_contract"] = cost_per_contract
     for h in horizons:
         train_panel = build_panel(train, horizon_seconds[h], h)
         test_panel = build_panel(test, horizon_seconds[h], h)
@@ -204,6 +246,9 @@ def run_correction(
                 (q.resolved_ts for q in train_panel.points), default=None),
             "test_min_observed_ts": first_test_ts,
         }
+        if cost_per_contract is not None:
+            entry["n_quoted_test"] = sum(p.bid is not None and p.ask is not None
+                                         for p in test_panel.points)
         if len(test_panel) < 20 or len(train_panel) < 20:
             entry["skipped"] = "too few train/test panel points (<20)"
             if entry["n_train_purged"]:
@@ -255,6 +300,11 @@ def run_correction(
                           else "no reliable improvement")
                 ),
             }
+            if cost_per_contract is not None:
+                entry[m_name]["quoted_payoff"] = _quoted_payoff(
+                    test_panel.points, p_hat, groups, cost_per_contract=cost_per_contract,
+                    n_boot=n_boot, seed=seed,
+                )
         out["horizons"][h] = entry
     return out
 
@@ -282,6 +332,46 @@ def correction_timing_note(correction: dict) -> str:
            "Resolution time blocks are a dependence sensitivity check, "
            "not verified independent events.")
     )
+
+
+def format_quoted_payoff(correction: dict) -> str:
+    """Shared text for the optional quote screen in terminal and reports."""
+    if correction.get("cost_per_contract") is None:
+        return ""
+    cost = correction["cost_per_contract"]
+    lines = [
+        "Quoted YES payoff (exploratory)",
+        f"Buy one YES when the held-out prediction exceeds ask + ${cost:.4f} "
+        "per contract. This is a stated cost assumption, not a venue fee estimate.",
+        "Mean payoff is dollars per quoted test market; abstentions count as zero. "
+        "Missing quotes are excluded. Intervals use the correction's bootstrap unit.",
+        "These retrospective settlement horizons were not known entry deadlines. "
+        "Carried quotes may be stale; fills, size and capital costs are not modeled. "
+        "Intervals are pointwise, without adjustment for trying multiple rules.",
+    ]
+    for h, entry in correction["horizons"].items():
+        lines.append(f"{h}: {entry['n_quoted_test']}/{entry['n_test']} quoted test markets")
+        if entry.get("skipped"):
+            lines.append(f"  skipped: {entry['skipped']}")
+            continue
+        for method in ("platt", "isotonic"):
+            if method not in entry:
+                continue
+            result = entry[method]
+            if result.get("skipped"):
+                lines.append(f"  {method}: skipped: {result['skipped']}")
+                continue
+            payoff = result["quoted_payoff"]
+            if payoff.get("skipped"):
+                lines.append(f"  {method}: skipped: {payoff['skipped']}")
+                continue
+            lo, hi = payoff["mean_payoff_ci"]
+            lines.append(
+                f"  {method}: selected {payoff['n_selected']}; "
+                f"{payoff['n_groups']} quoted groups; mean ${payoff['mean_payoff']:+.4f} "
+                f"[95% CI {lo:+.4f}, {hi:+.4f}]; {payoff['verdict']}"
+            )
+    return "\n".join(lines)
 
 
 def _safe_ece(p: np.ndarray, y: np.ndarray, n_bins: int, min_per_bin: int) -> float:

@@ -21,7 +21,7 @@ from .bias import (
     yes_price_inflation,
 )
 from .binning import equal_width_bins
-from .correct import correction_timing_note
+from .correct import correction_timing_note, format_quoted_payoff
 from .horizons import DEFAULT_HORIZONS, build_panel, parse_horizon
 from .metrics import (
     brier,
@@ -263,4 +263,6 @@ def format_digest(analysis: dict, correction: dict | None = None) -> str:
                     f"{h:<8}{meth:<10}{r['delta_brier']:>+9.4f}{ci:>20}  "
                     f"{r['verdict']}"
                 )
+        if note := format_quoted_payoff(correction):
+            lines.extend(["", note])
     return "\n".join(lines)

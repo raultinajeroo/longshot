@@ -96,6 +96,9 @@ def build_parser() -> argparse.ArgumentParser:
                    choices=["market", "resolution-day", "resolution-week"],
                    help="correction CI resampling unit; time blocks are an "
                         "exploratory dependence check beyond analysis.yaml")
+    p.add_argument("--cost-per-contract", type=float,
+                   help="optional quoted YES payoff screen: assumed dollars "
+                        "per contract in addition to the ask (exploratory)")
     p.add_argument("--out")
     p.add_argument("--config",
                    help="pre-registered analysis.yaml; supplies defaults "
@@ -262,6 +265,7 @@ def _cmd_correct(args: argparse.Namespace) -> int:
             method=method,
             train_frac=pick(args.train_frac, 0.6, corr_cfg, "train_frac"),
             bootstrap_unit=args.bootstrap_unit,
+            cost_per_contract=args.cost_per_contract,
             n_bins=pick(args.bins, 10, config, "bins"),
             min_per_bin=pick(args.min_per_bin, 30, config, "min_per_bin"),
             n_boot=pick(args.bootstrap, 1000, config, "bootstrap"),

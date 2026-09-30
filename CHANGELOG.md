@@ -51,6 +51,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Optional bid/ask quotes in JSONL observations, preserved through horizon
+  selection. `correct --cost-per-contract` screens held-out predictions
+  against the ask plus an explicit cost assumption, with coverage, selection
+  counts, payoff intervals, and limitations in terminal and published reports.
 - `longshot correct --bootstrap-unit resolution-day|resolution-week`
   resamples whole time blocks as an explicit dependence sensitivity check.
   Reports disclose the unit and group counts. The registered default remains

@@ -249,6 +249,30 @@ timing alone. Repeated snapshots and related event legs are not independent
 outcomes, and midpoint calibration alone does not establish returns after
 spreads, fees, or execution costs.
 
+To screen a correction against recorded quotes, pass an explicit additional
+cost in dollars per YES contract:
+
+```bash
+# 0.01 is an illustrative assumption, not an exchange fee estimate.
+uv run longshot correct --input resolved-kalshi.jsonl --config analysis.yaml \
+  --cost-per-contract 0.01 --bootstrap-unit resolution-week --out correction.json
+uv run longshot publish --analysis analysis.json --correction correction.json --out site/
+```
+
+For each fitted method, the rule hypothetically buys one YES when its held-out
+prediction exceeds the recorded ask plus that cost. Payoff is outcome minus
+ask minus cost; unselected quoted markets contribute zero. Reports show quote
+coverage, selected counts, mean dollars per quoted test market, and a 95%
+interval using the chosen bootstrap unit. Missing quotes stay missing, and
+fewer than 20 quoted test markets or two quoted groups skips the payoff check.
+Without the flag, correction only evaluates probability accuracy.
+
+This is an exploratory screen. The horizons depend on eventual settlement;
+they are not entry deadlines known at the time. Quotes can be carried forward,
+and the screen does not establish fills, size, or capital costs. The cost is
+a user assumption, and intervals are pointwise across methods and horizons.
+It cannot by itself establish an executable strategy or an after-cost edge.
+
 ### JSONL schema
 
 One JSON object per line (JSONL):
@@ -264,6 +288,12 @@ One JSON object per line (JSONL):
 `outcome` is 1 for YES, 0 for NO; prices are probabilities of YES in
 [0, 1]. Loading validates ranges, sorts series, and drops empty series
 (`store.py`).
+
+A series point may also be `[timestamp, price, yes_bid, yes_ask]`, for example
+`[1767900000, 0.62, 0.61, 0.63]`. pmwatch exports this four-value form. Both
+quotes must come from that observation and satisfy `0 <= bid <= ask <= 1`.
+Legacy two-value points still load; quotes are never inferred from a price.
+Horizon selection carries the quotes with their original observation.
 
 ## Venues
 

@@ -28,7 +28,7 @@ from pathlib import Path
 
 from . import __version__
 from .analyze import price_estimator_note
-from .correct import correction_timing_note
+from .correct import correction_timing_note, format_quoted_payoff
 from .report import write_report
 from .venues.status import MANIFOLD_ONLY_NOTE, is_manifold_only, venue_status
 
@@ -132,6 +132,8 @@ def render_summary(analysis: dict, correction: dict | None) -> str:
                     f"{r['delta_brier_ci'][1]:+.4f}] | {r['verdict']} |"
                 )
         lines.append("")
+        if note := format_quoted_payoff(correction):
+            lines.extend(["```text", note, "```", ""])
 
     lines.append("## Venue status")
     lines.append("")
@@ -183,6 +185,7 @@ def build_provenance(
             "split_protocol": correction.get("split_protocol", "legacy"),
             "bootstrap_unit": correction.get("bootstrap_unit", "market"),
             "train_frac": correction["train_frac"],
+            "cost_per_contract": correction.get("cost_per_contract"),
         } if correction else None,
         "dataset": {
             "label": analysis["label"],

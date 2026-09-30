@@ -1,7 +1,8 @@
 """JSONL persistence for MarketSeries, with validation and provenance.
 
 On-disk format: one JSON object per line with the MarketSeries fields;
-``series`` is a list of [ts, price] pairs. Loading validates price ranges,
+``series`` contains [ts, price] or [ts, price, yes_bid, yes_ask] points.
+Loading validates price and quote ranges,
 outcome values, and time ordering; series are re-sorted by ts; markets
 with an empty series are dropped (a resolved market with no probability
 history carries no calibration information).
@@ -39,7 +40,8 @@ def market_to_dict(m: MarketSeries) -> dict:
         "outcome": m.outcome,
         "volume": m.volume,
         "n_traders": m.n_traders,
-        "series": [[pt.ts, pt.price] for pt in m.series],
+        "series": [([pt.ts, pt.price] if pt.bid is None and pt.ask is None
+                    else [pt.ts, pt.price, pt.bid, pt.ask]) for pt in m.series],
         "provenance": m.provenance,
     }
 
@@ -65,13 +67,18 @@ def market_from_dict(d: dict, *, line_no: int | None = None) -> MarketSeries | N
         raise StoreError(f"store: series must be a list{where}")
     points: list[PricePoint] = []
     for item in raw_series:
+        if not isinstance(item, (list, tuple)) or len(item) not in (2, 4):
+            raise StoreError(f"store: series point needs 2 or 4 values{where}")
         try:
             ts, price = int(item[0]), float(item[1])
+            bid, ask = (float(item[2]), float(item[3])) if len(item) == 4 else (None, None)
         except (TypeError, ValueError, IndexError) as exc:
             raise StoreError(f"store: bad series point {item!r}{where}") from exc
         if not 0.0 <= price <= 1.0:
             raise StoreError(f"store: price {price} out of [0, 1]{where}")
-        points.append(PricePoint(ts=ts, price=price))
+        if bid is not None and not 0.0 <= bid <= ask <= 1.0:
+            raise StoreError(f"store: quotes must satisfy 0 <= bid <= ask <= 1{where}")
+        points.append(PricePoint(ts=ts, price=price, bid=bid, ask=ask))
     points.sort(key=lambda p: p.ts)
     if not points:
         return None  # policy: drop empty series

@@ -82,6 +82,8 @@ def build_panel(
                 p=pt.price,
                 outcome=m.outcome,
                 observed_ts=pt.ts,
+                bid=pt.bid,
+                ask=pt.ask,
             )
         )
     return HorizonPanel(name=name, seconds=h, points=tuple(points))

@@ -55,6 +55,68 @@ def test_correct_discloses_resolution_bootstrap_unit(tmp_path, capsys):
     assert "resolution-day" in capsys.readouterr().out
 
 
+def test_cost_screen_discloses_missing_quotes_in_cli_and_reports(tmp_path, capsys):
+    from longshot.analyze import run_analysis
+    from longshot.publish import render_summary
+    from longshot.report import render_html
+    from longshot.store import load_jsonl
+
+    out = tmp_path / "costed.json"
+    assert main(["correct", "--input", str(FIXTURE), "--out", str(out),
+                 "--horizons", "14d", "--bootstrap", "20",
+                 "--cost-per-contract", "0.01"]) == 0
+    result = json.loads(out.read_text())
+    assert result["cost_per_contract"] == 0.01
+    assert result["horizons"]["14d"]["n_quoted_test"] == 0
+    analysis = run_analysis(load_jsonl(FIXTURE), horizons=["14d"], n_boot=20)
+    for text in (capsys.readouterr().out, render_html(analysis, result),
+                 render_summary(analysis, result)):
+        assert "0.0100" in text
+        assert "quoted test" in text
+        assert "retrospective" in text
+
+
+def test_invalid_cost_keeps_existing_output(tmp_path, capsys):
+    out = tmp_path / "existing.json"
+    out.write_text("keep this")
+    assert main(["correct", "--input", str(FIXTURE), "--out", str(out),
+                 "--cost-per-contract", "nan"]) == 4
+    assert "cost per contract" in capsys.readouterr().err
+    assert out.read_text() == "keep this"
+
+
+def test_quoted_payoff_survives_cli_and_publish(tmp_path, capsys):
+    from dataclasses import replace
+
+    from longshot.simulate import simulate_markets
+    from longshot.store import write_jsonl
+
+    # Synthetic quotes exercise the export contract; they are not venue data.
+    markets = [replace(m, series=tuple(
+        replace(p, bid=max(0, p.price - 0.02), ask=min(1, p.price + 0.02))
+        for p in m.series)) for m in simulate_markets("calibrated", 400, 202)]
+    source = tmp_path / "quoted.jsonl"
+    write_jsonl(source, markets)
+    analysis, correction = tmp_path / "analysis.json", tmp_path / "correction.json"
+    args = ["--input", str(source), "--horizons", "30d", "--bootstrap", "20"]
+    assert main(["analyze", *args, "--out", str(analysis)]) == 0
+    assert main(["correct", *args, "--out", str(correction),
+                 "--cost-per-contract", "0.01", "--bootstrap-unit", "resolution-week"]) == 0
+    terminal = capsys.readouterr().out
+    result = json.loads(correction.read_text())["horizons"]["30d"]["isotonic"]["quoted_payoff"]
+    assert result["n_quoted"] >= 20 and result["n_selected"] > 0
+    site = tmp_path / "site"
+    assert main(["publish", "--analysis", str(analysis), "--correction", str(correction),
+                 "--out", str(site)]) == 0
+    for text in (terminal, (site / "report.html").read_text(),
+                 (site / "README-summary.md").read_text()):
+        assert f"selected {result['n_selected']}" in text
+        assert f"{result['mean_payoff']:+.4f}" in text
+        assert "resolution-week" in text and "retrospective" in text
+    provenance = json.loads((site / "provenance.json").read_text())
+    assert provenance["correction_protocol"]["cost_per_contract"] == 0.01
+
+
 def test_simulate_cli(tmp_path):
     out = tmp_path / "sim.jsonl"
     assert main(["simulate", "--mode", "calibrated", "--markets", "10",

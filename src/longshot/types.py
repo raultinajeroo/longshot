@@ -15,11 +15,14 @@ from dataclasses import dataclass, field
 class PricePoint:
     """One observation of the market-implied probability of YES.
 
-    ``ts`` is unix seconds; ``price`` is in [0, 1].
+    ``ts`` is unix seconds; ``price`` is in [0, 1]. Optional ``bid`` and
+    ``ask`` are YES quotes from the same observation, supplied together.
     """
 
     ts: int
     price: float
+    bid: float | None = None
+    ask: float | None = None
 
 
 @dataclass(frozen=True)
@@ -61,6 +64,8 @@ class HorizonPoint:
     p: float  # probability of YES, observed `horizon` before resolution
     outcome: int  # 1 = resolved YES, 0 = NO
     observed_ts: int | None = None  # timestamp of the carried price
+    bid: float | None = None
+    ask: float | None = None
 
 
 @dataclass(frozen=True)

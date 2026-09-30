@@ -14,7 +14,7 @@ import math
 from pathlib import Path
 
 from .analyze import price_estimator_note
-from .correct import correction_timing_note
+from .correct import correction_timing_note, format_quoted_payoff
 
 
 _CSS = """
@@ -266,6 +266,8 @@ def render_html(
             "<th>95% CI</th><th>verdict</th></tr></thead>"
             f"<tbody>{''.join(rows)}</tbody></table>"
         )
+        if note := format_quoted_payoff(correction):
+            corr_html += f"<pre style='white-space: pre-wrap'>{esc(note)}</pre>"
 
     doc = [
         "<!DOCTYPE html>",

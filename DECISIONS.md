@@ -10,6 +10,10 @@ Judgment calls made during the build, and why.
   presenting midpoints as trade prices. First observation is a conservative
   lifetime bound, not a claim about market creation. Missing estimator
   labels remain `unspecified`, and mixed analyses disclose pooling.
+- **Optional quotes (2026-09-30).** Accept `[ts, price, yes_bid, yes_ask]`
+  alongside legacy two-value observations. Validate both quotes and carry
+  them from the selected observation; never fill missing quotes from a
+  midpoint or a different timestamp.
 - **Creation-time prior (0.5).** Manifold lite-market payloads do not
   expose the opening probability, so every series is prepended with
   `(created_ts, 0.5)`. This makes long-horizon panels well-defined for
@@ -27,6 +31,15 @@ Judgment calls made during the build, and why.
 
 ## Statistics
 
+- **Quoted payoff screen (2026-09-30).** Only run when an additional
+  per-contract cost is explicitly supplied. Use the same held-out predictions
+  as correction and hypothetically buy one YES when prediction > ask + cost.
+  Average across all quoted test markets, counting abstentions as zero;
+  disclose excluded observations and use the correction's resampling groups.
+  Require at least 20 quoted markets and two groups. This is an exploratory,
+  retrospective settlement-horizon screen with pointwise intervals, not a
+  fill model. No NO-side ask is inferred, no venue fees are guessed, and no
+  cost is tuned on the test set. The registered analysis stays unchanged.
 - **Training outcome availability (2026-09-30).** Preserve the declared
   resolution-date split, then remove training panel points whose outcomes
   settle at or after the earliest test price observation for that horizon.

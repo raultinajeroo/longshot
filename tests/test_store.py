@@ -37,6 +37,35 @@ def test_roundtrip_jsonl(tmp_path):
     assert market_to_dict(back[0]) == market_to_dict(markets[0])
 
 
+def test_quoted_points_survive_sorting_roundtrip_and_horizon_selection(tmp_path):
+    from longshot.horizons import build_panel
+
+    record = market_to_dict(_market())
+    record["series"] = [[1999, 0.9, 0.85, 0.95], [1000, 0.5],
+                        [1500, 0.6, 0.55, 0.65]]
+    market = market_from_dict(record)
+    path = tmp_path / "quoted.jsonl"
+    write_jsonl(path, [market])
+    restored = load_jsonl(path)[0]
+    assert market_to_dict(restored)["series"] == sorted(record["series"])
+    point = build_panel([restored], 400, "custom").points[0]
+    assert (point.observed_ts, point.bid, point.ask) == (1500, 0.55, 0.65)
+    assert restored.series[0].bid is None and restored.series[0].ask is None
+
+
+@pytest.mark.parametrize("point", [
+    [1500, 0.5, 0.4], [1500, 0.5, 0.4, 0.6, 10],
+    [1500, 0.5, 0.7, 0.3], [1500, 0.5, -0.1, 0.6],
+    [1500, 0.5, 0.4, 1.1], [1500, 0.5, None, 0.6],
+    [1500, 0.5, 0.4, float("nan")],
+])
+def test_rejects_malformed_quotes(point):
+    record = market_to_dict(_market())
+    record["series"] = [point]
+    with pytest.raises(StoreError):
+        market_from_dict(record)
+
+
 def test_rejects_out_of_range_price():
     d = market_to_dict(_market())
     d["series"] = [[1000, 1.5]]
