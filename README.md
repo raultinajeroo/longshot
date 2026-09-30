@@ -188,6 +188,41 @@ Polymarket/Kalshi collectors as parser-tested but not exercised live.
 
 ## Data model
 
+### pmwatch observations
+
+[pmwatch](https://github.com/raultinajeroo/pmwatch) can export resolved
+order-book histories directly into this format:
+
+```bash
+# In the pmwatch checkout, after outcomes have been recorded:
+uv run pmwatch export --db observations.db --format longshot \
+  --venue kalshi --out resolved-kalshi.jsonl
+# In the longshot checkout, using that exported file:
+uv run longshot analyze --input resolved-kalshi.jsonl --config analysis.yaml \
+  --out analysis.json
+uv run longshot publish --analysis analysis.json --out site/
+```
+
+No adapter or conversion is needed. The observations are **YES order-book
+midpoints**, labeled `price_estimator=order_book_mid` in provenance.
+Analysis JSON, the terminal digest, HTML, the Markdown summary, and the
+publication provenance preserve that distinction. Legacy inputs without
+an estimator label are counted as `unspecified`; a mixed analysis explicitly
+notes that estimators have been pooled. Keep venues and estimators in
+separate analyses when comparing them.
+
+Export timestamps are pmwatch's `fetched_at`, not the venue's book timestamp.
+The export excludes observations at or after settlement and uses the first
+observation as a conservative `created_ts` bound, labeled `first_observed`.
+Unchanged books can overwrite earlier observations in pmwatch, so the export
+does not recover a complete polling history. Shorter exploratory horizons
+such as `--horizons 1h,5m` already work; disclose them as deviations from the
+pre-registered config. Coverage and thin-support rules still apply.
+Correction needs at least two markets for a train/test split and at least
+20 panel points in each split before a horizon can be scored.
+
+### JSONL schema
+
 One JSON object per line (JSONL):
 
 ```json

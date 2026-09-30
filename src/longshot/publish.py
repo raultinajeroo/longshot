@@ -27,6 +27,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from . import __version__
+from .analyze import price_estimator_note
 from .report import write_report
 from .venues.status import MANIFOLD_ONLY_NOTE, is_manifold_only, venue_status
 
@@ -77,6 +78,10 @@ def render_summary(analysis: dict, correction: dict | None) -> str:
     if is_manifold_only(venues):
         lines.append(f"**{MANIFOLD_ONLY_NOTE}**")
         lines.append("")
+
+    note = price_estimator_note(analysis)
+    if note:
+        lines.extend([note, ""])
 
     lines.append("## Calibration by horizon")
     lines.append("")
@@ -176,6 +181,7 @@ def build_provenance(
             "label": analysis["label"],
             "n_markets": ds["n_markets"],
             "venues": ds.get("venues", {}),
+            "price_estimators": ds.get("price_estimators", {}),
         },
         "venue_status": venue_status(),
         "manifold_only_methodology_demo": is_manifold_only(venues),

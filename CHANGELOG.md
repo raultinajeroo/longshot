@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Correction on a one-market input reports exit code 4 with the minimum
+  sample requirement instead of a traceback; existing output is preserved.
 - **Kalshi collector returned zero markets.** It paged `/markets?status=settled`,
   which is dominated at every depth by markets too short-lived to produce
   two daily candles (median lifetime ~11 minutes over 6,000 measured rows),
@@ -41,6 +43,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Direct pmwatch JSONL ingestion documented and tested at 1h and 5m
+  horizons. Explicit price-estimator counts now appear in analysis and
+  publication provenance, with midpoint and mixed-estimator notes in all
+  human-readable reports.
 - Pre-registered `analysis.yaml`: horizons, bins, min_per_bin, bootstrap,
   correction methods, and verdict rules declared before data is examined.
   `longshot analyze`/`correct` accept `--config`; explicit flags override.

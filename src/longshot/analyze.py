@@ -7,6 +7,7 @@ the HTML report and the README tables comes from this structure.
 from __future__ import annotations
 
 import math
+from collections import Counter
 from datetime import datetime, timezone
 from typing import Iterable
 
@@ -162,6 +163,9 @@ def run_analysis(
         "dataset": {
             "n_markets": len(markets),
             "venues": venues,
+            "price_estimators": dict(Counter(
+                str(m.provenance.get("price_estimator") or "unspecified") for m in markets
+            )),
             "n_yes": sum(m.outcome for m in markets),
             "n_no": sum(1 - m.outcome for m in markets),
             "resolved_ts_range": [
@@ -184,6 +188,21 @@ def run_analysis(
     }
 
 
+def price_estimator_note(analysis: dict) -> str:
+    """Expose explicitly labeled observation methods in every report format."""
+    estimators = analysis["dataset"].get("price_estimators", {})
+    if not estimators or set(estimators) == {"unspecified"}:
+        return ""
+    note = "Price estimators (markets): " + ", ".join(
+        f"{name} ({count})" for name, count in sorted(estimators.items())
+    ) + "."
+    if "order_book_mid" in estimators:
+        note += " Order-book midpoints are quoted prices, not executed trades."
+    if len(estimators) > 1:
+        note += " Multiple estimators are pooled here; analyze them separately for comparison."
+    return note
+
+
 def format_digest(analysis: dict, correction: dict | None = None) -> str:
     """Plain-ASCII summary table of an analysis (+ optional correction)."""
     ds = analysis["dataset"]
@@ -196,6 +215,9 @@ def format_digest(analysis: dict, correction: dict | None = None) -> str:
         f"{'slope':>8}{'slope 95% CI':>18}",
         "-" * 62,
     ]
+    note = price_estimator_note(analysis)
+    if note:
+        lines.insert(2, note)
     for h in analysis["params"]["horizons"]:
         e = analysis["horizons"][h]
         if e.get("skipped"):

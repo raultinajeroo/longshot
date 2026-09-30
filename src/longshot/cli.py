@@ -252,15 +252,19 @@ def _cmd_correct(args: argparse.Namespace) -> int:
         if args.method != "both" or not corr_cfg.get("methods")
         else ("both" if len(methods) > 1 else methods[0])
     )
-    correction = run_correction(
-        markets, horizons=horizons, horizon_seconds=seconds,
-        method=method,
-        train_frac=pick(args.train_frac, 0.6, corr_cfg, "train_frac"),
-        n_bins=pick(args.bins, 10, config, "bins"),
-        min_per_bin=pick(args.min_per_bin, 30, config, "min_per_bin"),
-        n_boot=pick(args.bootstrap, 1000, config, "bootstrap"),
-        seed=pick(args.seed, 42, config, "seed"),
-    )
+    try:
+        correction = run_correction(
+            markets, horizons=horizons, horizon_seconds=seconds,
+            method=method,
+            train_frac=pick(args.train_frac, 0.6, corr_cfg, "train_frac"),
+            n_bins=pick(args.bins, 10, config, "bins"),
+            min_per_bin=pick(args.min_per_bin, 30, config, "min_per_bin"),
+            n_boot=pick(args.bootstrap, 1000, config, "bootstrap"),
+            seed=pick(args.seed, 42, config, "seed"),
+        )
+    except ValueError as exc:
+        print(f"longshot: {exc}", file=sys.stderr)
+        return EXIT_BAD_INPUT
     # Print the verdict table via the digest formatter.
     print(format_digest(_minimal_analysis_for_digest(markets, args), correction))
     if args.out:

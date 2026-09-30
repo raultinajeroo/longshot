@@ -13,6 +13,9 @@ import json
 import math
 from pathlib import Path
 
+from .analyze import price_estimator_note
+
+
 _CSS = """
 :root { color-scheme: light; }
 body { font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -267,6 +270,8 @@ def render_html(
         f"{esc(analysis['label'])} &middot; generated "
         f"{esc(analysis['generated_at'])} by longshot "
         f"{esc(analysis['version'])}</div>",
+        (f"<p class='note'>{esc(price_estimator_note(analysis))}</p>"
+         if price_estimator_note(analysis) else ""),
 
         f"<h2>reliability diagram — {esc(ref)} before resolution</h2>",
         _reliability_svg(analysis["horizons"][ref]),

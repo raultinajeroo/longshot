@@ -35,6 +35,16 @@ def test_missing_input_exits_4():
     assert exc.value.code == 4
 
 
+def test_correct_single_market_is_a_clean_input_error(tmp_path, capsys):
+    single = tmp_path / "single.jsonl"
+    single.write_text(FIXTURE.read_text().splitlines()[0] + "\n")
+    out = tmp_path / "correction.json"
+    out.write_text("keep existing output")
+    assert main(["correct", "--input", str(single), "--out", str(out)]) == 4
+    assert "at least 2 markets" in capsys.readouterr().err
+    assert out.read_text() == "keep existing output"
+
+
 def test_simulate_cli(tmp_path):
     out = tmp_path / "sim.jsonl"
     assert main(["simulate", "--mode", "calibrated", "--markets", "10",

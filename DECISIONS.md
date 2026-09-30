@@ -4,6 +4,12 @@ Judgment calls made during the build, and why.
 
 ## Data model and panels
 
+- **pmwatch midpoints (2026-09-30).** Consume its store-format export
+  unchanged. Preserve observation and outcome provenance; expose explicit
+  price-estimator counts in the analysis and reports rather than silently
+  presenting midpoints as trade prices. First observation is a conservative
+  lifetime bound, not a claim about market creation. Missing estimator
+  labels remain `unspecified`, and mixed analyses disclose pooling.
 - **Creation-time prior (0.5).** Manifold lite-market payloads do not
   expose the opening probability, so every series is prepended with
   `(created_ts, 0.5)`. This makes long-horizon panels well-defined for
